@@ -1,0 +1,395 @@
+# Dialogues à plusieurs tours : la dernière question dépend de l'historique
+# (reformulation, approfondissement, changement de paramètre, exemple sur la notion précédente).
+
+=== S001 | follow_up | temperature
+U: C'est quoi la température quand on génère du texte ?
+A: La température divise les logits avant la softmax : p = softmax(z / T). Une température basse concentre la probabilité sur les tokens les plus probables et rend la génération stable ; une température haute aplatit la distribution et rend le texte plus varié mais plus risqué.
+Veux-tu voir l'effet sur un exemple chiffré ?
+U: oui avec T = 0,5 sur les logits (2, 1, 0, -1)
+A: On divise les logits par 0,5 : on obtient (4, 2, 0, −2). Les exponentielles valent environ 54,6, 7,39, 1 et 0,14, pour une somme de 63,1. Les probabilités deviennent donc environ 86,5 %, 11,7 %, 1,6 % et 0,2 %.
+À T = 1, le premier token n'avait que 64,4 % : baisser la température l'a rendu nettement plus dominant, sans changer l'ordre des tokens.
+À ton avis, que donnerait T = 2 sur le premier token : plus ou moins de 64,4 % ?
+
+=== S002 | follow_up | temperature
+U: explique moi la température en génération
+A: La température T modifie la distribution du prochain token : on calcule softmax(z / T) au lieu de softmax(z). Sous 1, les écarts entre logits s'accentuent et le modèle devient plus prévisible ; au-dessus de 1, ils se réduisent et le modèle prend plus de risques.
+Quelle situation t'intéresse : une tâche factuelle ou une tâche créative ?
+U: Et si je mets une température énorme, genre 100 ?
+A: Avec T = 100, tous les logits sont divisés par 100 : les écarts deviennent minuscules, et la softmax donne presque la même probabilité à tous les tokens du vocabulaire. La génération devient quasiment un tirage uniforme : le texte n'a plus de sens, avec des mots rares et des caractères au hasard.
+C'est le cas extrême du réglage « élevé = varié, plus risqué » du tableau du cours. À l'autre extrême, T proche de 0 revient au greedy.
+Avec un vocabulaire de 50 257 tokens, quelle probabilité aurait chaque token dans le cas limite d'une distribution parfaitement uniforme ?
+
+=== S003 | follow_up | top_k_top_p
+U: c'est quoi le top-k ?
+A: Le top-k garde seulement les k tokens les plus probables, met les autres à zéro et renormalise avant le tirage. Avec les probabilités du cours (64,4 %, 23,7 %, 8,7 %, 3,2 %) et k = 2, il reste deux candidats, qui passent à environ 73,1 % et 26,9 %.
+Veux-tu comparer avec le top-p ?
+U: oui c'est quoi la différence avec le top-p du coup
+A: La différence porte sur ce qu'on fixe :
+- le top-k fixe le nombre de candidats, ici 2, quel que soit le contexte ;
+- le top-p fixe une masse de probabilité : on garde le plus petit ensemble dont le cumul atteint p. Sur le même exemple avec p = 0,9, il faut trois tokens (64,4 + 23,7 + 8,7 = 96,8 %).
+Le top-p s'adapte donc à la confiance du modèle : peu de candidats quand il est sûr, beaucoup quand il hésite. C'est pourquoi on le préfère souvent.
+Avec p = 0,6, combien de tokens resteraient ici ?
+
+=== S004 | follow_up | softmax
+U: Pourquoi on applique une softmax à la fin du modèle ?
+A: Parce que l'unembedding produit des logits, un score par token du vocabulaire, qui peuvent être négatifs et ne somment pas à 1. La softmax les rend positifs avec l'exponentielle, puis les divise par leur somme : on obtient une vraie distribution de probabilité sur le prochain token.
+Veux-tu refaire le calcul de l'exemple du cours ?
+U: non mais je comprends pas pourquoi on ne divise pas juste par la somme sans exponentielle
+A: Bonne question. Diviser directement par la somme ne marche pas pour deux raisons :
+- les logits peuvent être négatifs : avec (2, −1), la somme vaut 1 et on obtiendrait une « probabilité » de −1 ;
+- la somme peut être nulle ou presque, par exemple avec (1, −1).
+L'exponentielle règle les deux problèmes : tout devient strictement positif, et l'ordre est conservé. En prime, elle amplifie les écarts, ce qui permet au modèle d'exprimer une forte confiance.
+Que donnerait la softmax de (2, −1) ?
+
+=== S005 | follow_up | masque_causal
+U: J'ai du mal avec le masque causal, tu peux m'expliquer ?
+A: Le masque causal empêche chaque token de regarder les tokens suivants. Avant la softmax, on remplace les scores vers le futur par −∞ ; leurs poids d'attention deviennent exactement nuls.
+Sans lui, pendant l'entraînement, chaque position verrait le token qu'elle doit prédire.
+Veux-tu voir à quoi ressemble la matrice masquée ?
+U: oui sur une phrase de 3 mots
+A: Prenons « Le petit chat ». Chaque ligne est un token qui regarde, chaque colonne un token regardé ; × signifie autorisé, − signifie masqué à −∞ :
+- Le : × − − ;
+- petit : × × − ;
+- chat : × × ×.
+La matrice est triangulaire : « Le » ne voit que lui-même, « chat » voit les trois tokens. Après la softmax, chaque ligne somme à 1 et les cases masquées valent exactement 0.
+Combien de cases non masquées y aurait-il pour une phrase de 5 tokens ?
+
+=== S006 | follow_up | attention
+U: Explique moi l'attention en une phrase
+A: L'attention permet à chaque token de récupérer de l'information dans les tokens précédents, en pondérant chacun selon sa pertinence, calculée par le produit scalaire entre sa Query et leurs Keys.
+Veux-tu le détail des calculs ?
+U: oui mais avec l'exemple du chaperon
+A: Avec « Le petit chaperon rouge », pour le token « chaperon » :
+1. sa Query q = W_Q · E_chaperon décrit ce qu'il cherche ;
+2. on calcule les scores k_j · q / √128 avec les Keys de « Le », « petit » et « chaperon » ; « rouge » est masqué ;
+3. la softmax donne les poids : 1 % sur « Le », 95 % sur « petit », 4 % sur lui-même ;
+4. on additionne les Values pondérées : ΔE = 0,01·v_Le + 0,95·v_petit + 0,04·v_chaperon ;
+5. on ajoute ΔE à l'embedding de départ.
+« chaperon » porte maintenant l'information « petit ». Pourquoi « petit » obtient-il un poids si élevé ?
+
+=== S007 | follow_up | lora
+U: c'est quoi LoRA
+A: LoRA (Low-Rank Adaptation) adapte un modèle pré-entraîné en gardant ses poids gelés et en apprenant seulement une petite correction de faible rang pour certaines matrices : W' = W + (α/r)·B·A. On entraîne donc une petite fraction des paramètres.
+Veux-tu un calcul du nombre de paramètres ?
+U: oui pour une matrice 896 x 896 avec r = 8
+A: On apprend A de taille 8 × 896 et B de taille 896 × 8 :
+- A : 8 × 896 = 7 168 paramètres ;
+- B : 896 × 8 = 7 168 paramètres ;
+- total : 14 336 paramètres.
+La matrice complète en contient 896² = 802 816. On n'entraîne donc qu'environ 1,8 % des paramètres de cette matrice. Le rang r fixe ce compromis : avec r = 16, on doublerait à 28 672.
+Si tu adaptes ainsi q_proj et o_proj, toutes deux de taille 896 × 896, dans les 24 couches, combien de paramètres entraînables obtiens-tu au total ?
+
+=== S008 | follow_up | lora
+U: Pourquoi on dit que LoRA est léger ?
+A: Parce que les poids du modèle de base sont gelés : on n'entraîne que les adaptateurs, souvent moins de 2 % des paramètres. L'optimiseur ne stocke ses états que pour eux, et le fichier sauvegardé ne pèse que quelques dizaines de mégaoctets.
+Veux-tu savoir ce que ça change en mémoire ?
+U: oui concrètement pour un modèle de 500 millions de paramètres
+A: En fp32, chaque paramètre pèse 4 octets.
+- ajustement complet : 2 Go de poids, plus 2 Go de gradients, plus environ 4 Go pour les deux moyennes d'AdamW, soit environ 8 Go avant même les activations ;
+- LoRA avec environ 9 millions de paramètres entraînables : toujours 2 Go de poids gelés, mais seulement environ 36 Mo de gradients et 72 Mo d'états d'AdamW.
+On passe donc d'environ 8 Go à un peu plus de 2 Go, ce qui rend l'entraînement possible sur un ordinateur portable. C'est ce qui manquait au TP3 pour dégeler tout distilgpt2.
+Que reste-t-il malgré tout de coûteux pendant l'entraînement LoRA ?
+
+=== S009 | follow_up | metriques
+U: c'est quoi le rappel ?
+A: Le rappel répond à la question : parmi tous les vrais positifs, combien le modèle en a-t-il trouvé ? Rappel = VP / (VP + FN). Il baisse quand le modèle oublie des positifs.
+Avec l'exemple du cours (VP = 40, FN = 20), le rappel vaut 40 / 60 ≈ 66,7 %.
+Veux-tu le comparer à la précision ?
+U: oui et calcule la précision avec le même exemple
+A: Avec le même exemple, FP = 10 : précision = VP / (VP + FP) = 40 / 50 = 80 %.
+La précision regarde les prédictions positives (sont-elles justes ?), le rappel regarde les vrais positifs (sont-ils trouvés ?). Ici, le modèle se trompe rarement quand il dit « positif » (80 %), mais il oublie un tiers des positifs (66,7 %). Le F1 les combine : 2 × 40 / (80 + 10 + 20) ≈ 72,7 %.
+Pour augmenter le rappel, dans quel sens déplacerais-tu le seuil de décision ?
+
+=== S010 | follow_up | metriques
+U: comment on calcule le F1 ?
+A: Le F1 est la moyenne harmonique de la précision P et du rappel R : F1 = 2PR / (P + R), ou directement F1 = 2VP / (2VP + FP + FN). Avec l'exemple du cours, VP = 40, FP = 10, FN = 20 : F1 = 80 / 110 ≈ 72,7 %.
+Veux-tu un autre exemple ?
+U: et si FN passe à 0 ?
+A: Avec FN = 0, le modèle trouve tous les positifs :
+- rappel = 40 / (40 + 0) = 100 % ;
+- précision inchangée = 40 / 50 = 80 % ;
+- F1 = 80 / (80 + 10 + 0) = 80 / 90 ≈ 88,9 %.
+Le F1 monte nettement, mais il reste limité par les 10 faux positifs : il faut que la précision et le rappel soient tous les deux bons pour s'approcher de 100 %.
+Que faudrait-il en plus pour obtenir F1 = 100 % ?
+
+=== S011 | follow_up | tfidf
+U: Explique TF-IDF
+A: TF-IDF pondère le comptage d'un mot dans un document (TF) par la rareté du mot dans le corpus (IDF) : poids = TF × ln(nombre de documents / nombre de documents contenant le mot). Un mot présent partout reçoit un poids nul, un mot rare un poids élevé.
+Veux-tu le calcul de l'exemple du cours ?
+U: non mais pourquoi un logarithme ?
+A: Le logarithme adoucit l'effet de la rareté. Sans lui, un mot présent dans 1 document sur 1 000 aurait un IDF de 1 000, contre 10 pour un mot présent dans 100 documents : l'écart serait énorme et quelques mots très rares écraseraient tout le reste.
+Avec ln, on passe à environ 6,9 contre 2,3 : le mot rare compte davantage, mais de façon raisonnable. Et un mot présent dans tous les documents obtient ln(1) = 0, ce qui l'annule proprement.
+Ce choix de formule n'est pas unique : le cours précise que les logiciels utilisent souvent un lissage. Quel problème le lissage évite-t-il quand on calcule l'IDF d'un mot absent du train ?
+
+=== S012 | follow_up | descente_gradient
+U: Explique la descente de gradient
+A: La descente de gradient modifie chaque paramètre dans la direction opposée au gradient de la perte : θ ← θ − η·∂L/∂θ. Le signe du gradient donne la direction, le pas η règle l'amplitude. On répète sur de nombreux batchs jusqu'à ce que la perte de validation cesse de baisser.
+Veux-tu refaire le pas chiffré du cours ?
+U: oui
+A: On part de w1 = w2 = b = 0 et de l'avis positif x = (1, 0). La prédiction vaut p = 0,5 et la perte −ln(0,5) ≈ 0,693. Le gradient vaut (−0,5 ; 0 ; −0,5) pour (w1, w2, b).
+Avec η = 0,2 : w1 = 0 − 0,2 × (−0,5) = 0,1, w2 = 0 et b = 0,1.
+Nouveau calcul : z = 0,1 + 0,1 = 0,2, p = σ(0,2) ≈ 0,550, et la perte tombe à −ln(0,550) ≈ 0,598.
+Pourquoi w2 n'a-t-il pas bougé ?
+
+=== S013 | follow_up | descente_gradient
+U: Le learning rate c'est quoi
+A: C'est le pas η de la descente de gradient : θ ← θ − η·∂L/∂θ. Il règle l'amplitude de chaque correction. Trop petit, l'apprentissage est lent ; trop grand, la perte oscille ou diverge.
+Veux-tu un exemple ?
+U: oui montre ce qui se passe si il est trop grand
+A: Prenons une perte simple L(θ) = θ², de gradient 2θ, avec θ = 1 au départ.
+- η = 0,1 : θ devient 1 − 0,1 × 2 = 0,8, puis 0,64… on converge doucement vers 0 ;
+- η = 1,5 : θ devient 1 − 1,5 × 2 = −2, puis −2 − 1,5 × (−4) = 4, puis −8… on s'éloigne du minimum à chaque pas.
+Avec un pas trop grand, chaque correction dépasse le minimum et rebondit plus loin : la perte explose. C'est ce qu'on observe quand une courbe de perte se met à osciller fortement ou à remonter.
+Quelle valeur de η ferait atteindre θ = 0 en un seul pas dans cet exemple ?
+
+=== S014 | follow_up | embeddings
+U: c'est quoi un embedding
+A: Un embedding est un vecteur dense appris qui représente un token. Dans un Transformer, l'identifiant du token sert à lire une ligne de la matrice d'embedding ; dans GPT-3, chaque vecteur a 12 288 dimensions. L'entraînement rapproche les tokens d'usages proches.
+Veux-tu un exemple de ce que ces vecteurs encodent ?
+U: oui
+A: L'exemple classique du cours : E(roi) − E(homme) + E(femme) ≈ E(reine). La différence entre « femme » et « homme » forme une direction, que l'on peut ajouter à « roi ».
+Le cours montre aussi une direction du pluriel : E(chats) − E(chat) ≈ E(chiens) − E(chien). Plus un embedding a une composante dans cette direction, plus son produit scalaire avec elle est élevé.
+Ces relations sont des approximations : on cherche le vecteur le plus proche, jamais une égalité exacte.
+D'après toi, quelle autre propriété linguistique pourrait être codée par une direction ?
+
+=== S015 | follow_up | embeddings
+U: Est-ce que l'embedding d'un mot change selon la phrase ?
+A: Ça dépend de quel embedding on parle. L'embedding de token, lu dans la matrice, est le même dans toutes les phrases. En revanche, après les couches d'attention, la représentation de ce token devient contextualisée : elle dépend des autres mots.
+Veux-tu un exemple ?
+U: oui avec avocat
+A: « L'avocat plaide » et « Je mange un avocat » partent du même vecteur E_avocat (plus la position). Dans la première phrase, l'attention ajoute l'information de « plaide », qui oriente la représentation vers le sens juridique ; dans la seconde, « mange » l'oriente vers l'aliment.
+À la sortie des couches, on obtient deux vecteurs différents, h_juridique et h_aliment, comme dans le cours. Un embedding statique, lui, garderait un seul vecteur qui mélange les deux sens.
+Dans « Je mange un avocat », l'attention permet-elle à « avocat » de voir le mot « mange » ? Pourquoi ?
+
+=== S016 | follow_up | rag
+U: C'est quoi le RAG
+A: Le RAG (Retrieval-Augmented Generation) cherche des passages pertinents dans un corpus pour chaque question, puis les place dans le contexte du LLM, qui répond en s'appuyant dessus. Il permet d'utiliser des informations actualisables sans réentraîner le modèle.
+Veux-tu voir ses limites ?
+U: oui quelles sont ses limites
+A: Le cours en cite plusieurs :
+- le mauvais document est retrouvé, ou le bon document mais le mauvais passage ;
+- le contexte devient trop long, ce qui dilue l'information et augmente le coût ;
+- la réponse n'est pas fidèle aux passages : le modèle peut encore inventer.
+Conclusion du cours : le RAG ne garantit pas la factualité. Il faut évaluer séparément la recherche (les bons passages sont-ils trouvés ?) et la génération (la réponse respecte-t-elle les passages ?).
+Comment pourrais-tu mesurer la qualité de la recherche de passages ?
+
+=== S017 | follow_up | prompting
+U: zero-shot c'est quoi
+A: Le zero-shot consiste à donner seulement l'instruction au modèle, sans aucun exemple : « Classe l'avis en positif ou négatif. Réponds avec ce seul mot. » C'est rapide et économique en contexte, mais la frontière entre les cas peut rester ambiguë.
+Veux-tu voir la version few-shot ?
+U: oui donne moi un exemple de few-shot pour la même tâche
+A: On ajoute quelques démonstrations avant la vraie question :
+« Classe l'avis de cinéma en positif ou négatif. Réponds avec ce seul mot.
+Avis : Un film captivant. Réponse : positif
+Avis : Un film ennuyeux. Réponse : négatif
+Avis : Ce film est excellent. Réponse : »
+Le modèle en déduit le format et la décision attendus. Attention aux biais : il peut copier la répartition ou l'ordre des exemples, comme au TP3. Le cours conseille des exemples courts, variés et représentatifs, y compris des cas frontières.
+Quel cas frontière ajouterais-tu à ces démonstrations ?
+
+=== S018 | follow_up | perte
+U: Pourquoi la loss utilise un -log ?
+A: Parce que −log(p) pénalise fortement une faible probabilité attribuée à la bonne réponse : p = 0,90 donne 0,11, p = 0,10 donne 2,30, et p = 0,001 donne 6,91. Minimiser cette perte revient à rendre le token observé plus probable.
+Veux-tu voir le lien avec la perplexité ?
+U: ok
+A: La perplexité est l'exponentielle de la perte moyenne : PPL = exp(L). Elle s'interprète comme le nombre de tokens entre lesquels le modèle hésite en moyenne.
+Par exemple, une perte de 2,30 correspond à une perplexité de 10 : c'est comme si le modèle hésitait entre 10 tokens équiprobables. Une perte de 0,69 correspond à une perplexité de 2.
+C'est une manière plus parlante de lire une perte, à condition de comparer des modèles sur les mêmes données et avec le même tokenizer.
+Quelle perplexité aurait un modèle qui prédit parfaitement chaque token ?
+
+=== S019 | follow_up | mlp_transformer
+U: Le MLP d'un transformer c'est quoi ?
+A: C'est un petit réseau appliqué séparément à chaque token, après l'attention : projection vers le haut (12 288 → 49 152 dans GPT-3), activation non linéaire, puis projection vers le bas (49 152 → 12 288). Sa sortie est ajoutée au vecteur par une connexion résiduelle.
+Veux-tu l'intuition du cours sur les « faits » ?
+U: oui
+A: L'intuition du cours : chaque ligne de W_up agit comme un détecteur. Pour le vecteur de « Michael Jackson », une ligne apprise peut répondre fortement à la combinaison « prénom Michael » et « nom Jackson ». Après ReLU, seuls les détecteurs suffisamment activés restent.
+La colonne correspondante de W_down écrit alors une direction dans le vecteur, par exemple « chanteur ». Le vecteur contient désormais « s'appelle Michael Jackson » + « est un chanteur ».
+Le cours précise que c'est une interprétation pédagogique : un neurone réel mélange souvent plusieurs propriétés.
+Pourquoi le biais est-il utile pour que le détecteur ne s'active qu'avec les deux indices ensemble ?
+
+=== S020 | follow_up | reformulation
+U: Je comprends rien à la rétropropagation
+A: Pas de souci, reprenons simplement. La rétropropagation répond à une question : si je modifie un tout petit peu un poids, de combien la perte change-t-elle ? Elle calcule cette sensibilité pour tous les poids, en partant de la sortie et en remontant vers l'entrée.
+Qu'est-ce qui te bloque le plus : l'idée générale ou le calcul ?
+U: le calcul, tu peux le faire plus simplement ?
+A: Bien sûr. Prends une chaîne de trois étapes : w → z → p → L. Chaque étape a un effet local facile :
+- quand w augmente de 1, z augmente de x (ici 1) ;
+- quand z augmente un peu, p augmente de p(1 − p) = 0,25 fois autant ;
+- quand p augmente un peu, L baisse de 1/p = 2 fois autant.
+L'effet total est le produit des effets : 1 × 0,25 × (−2) = −0,5. C'est tout : la règle de la chaîne multiplie les effets locaux.
+Avec cette méthode, pourrais-tu trouver l'effet sur L d'un petit changement de b ?
+
+=== S021 | follow_up | reformulation
+U: Explique la LayerNorm
+A: La LayerNorm normalise chaque vecteur de token sur ses C composantes : elle soustrait la moyenne, divise par l'écart-type, puis applique un gain γ et un décalage β appris. Elle stabilise les échelles avant l'attention et avant le MLP, sans mélanger les tokens.
+Veux-tu un exemple chiffré ?
+U: oui avec le vecteur (1, 2, 3)
+A: Pour (1, 2, 3) :
+- moyenne : (1 + 2 + 3) / 3 = 2 ;
+- écarts à la moyenne : (−1, 0, 1) ;
+- variance : (1 + 0 + 1) / 3 ≈ 0,667, donc écart-type ≈ 0,816 ;
+- vecteur normalisé : (−1, 0, 1) / 0,816 ≈ (−1,22 ; 0 ; 1,22).
+Le résultat a une moyenne de 0 et une variance de 1. Avec γ = 1 et β = 0, c'est la sortie de la LayerNorm ; en pratique, on ajoute aussi un petit ε sous la racine pour éviter une division par zéro.
+Que donnerait la LayerNorm du vecteur (2, 4, 6) ?
+
+=== S022 | follow_up | historique_chatbot
+U: comment un chatbot se souvient de la conversation ?
+A: Il ne s'en souvient pas vraiment : le modèle n'a aucune mémoire entre deux appels. L'application renvoie à chaque tour l'historique de la conversation dans le contexte, avec les rôles user et assistant, après le message système.
+Veux-tu savoir comment on limite cet historique ?
+U: oui et pourquoi on doit le limiter
+A: On doit le limiter parce que la fenêtre de contexte est un budget partagé : l'historique grandit à chaque échange et finirait par dépasser la fenêtre, en laissant moins de place à la réponse. Il augmente aussi la latence et le coût, et un contexte trop long peut diluer les consignes.
+Méthodes courantes : garder les N derniers échanges, retirer les plus anciens jusqu'à tenir dans un budget de tokens, ou résumer les anciens échanges. On garde toujours le message système et on retire les échanges entiers.
+Si on retire le message système pour gagner de la place, quel risque prend-on ?
+
+=== S023 | follow_up | fine_tuning
+U: c'est quoi le fine-tuning
+A: Le fine-tuning poursuit l'entraînement d'un modèle pré-entraîné sur des exemples de la tâche visée, pour spécialiser son comportement : style, format, décision. On peut ajuster tous les paramètres ou seulement une petite partie, comme avec LoRA.
+Veux-tu savoir quand ne pas l'utiliser ?
+U: oui
+A: Le cours cite deux mauvais usages :
+- injecter des faits qui changent souvent, comme des prix ou des horaires : il vaut mieux fournir des documents récents au modèle, avec le RAG ;
+- corriger une consigne mal écrite : il faut d'abord améliorer le prompt, c'est beaucoup moins coûteux.
+Le fine-tuning est adapté à un comportement récurrent et stable, appris à partir d'exemples de qualité. Et sa qualité dépend plus de la représentativité des exemples que de leur nombre.
+Pour un agent qui doit toujours répondre en moins de 150 mots, en français, fine-tuning ou prompt ?
+
+=== S024 | follow_up | sur_apprentissage
+U: c'est quoi le surapprentissage ?
+A: Le surapprentissage, c'est quand le modèle mémorise les détails du train au lieu d'apprendre des régularités générales : la perte d'entraînement continue de baisser, mais la perte de validation stagne puis remonte.
+Veux-tu savoir comment l'éviter avec LoRA ?
+U: oui dans le cas de LoRA
+A: Avec LoRA sur quelques centaines d'exemples, le risque arrive vite. Les leviers principaux :
+- évaluer la perte de validation régulièrement et sauvegarder l'adaptateur au meilleur point (arrêt précoce) ;
+- limiter le nombre d'époques, souvent 2 à 4 suffisent ;
+- garder un rang r modeste et un peu de dropout dans l'adaptateur ;
+- diversifier les exemples plutôt que d'en répéter de très proches.
+Le modèle de base gelé limite aussi les dégâts : on ne peut pas « oublier » complètement ce qu'il sait, puisqu'il suffit de retirer l'adaptateur.
+Pourquoi faut-il surveiller la validation et pas seulement la perte d'entraînement ?
+
+=== S025 | follow_up | gpt3
+U: combien de paramètres a GPT-3 ?
+A: GPT-3, dans sa plus grande version, compte environ 175 milliards de paramètres. Le cours retrouve ce chiffre en additionnant les matrices : environ 116 milliards pour le MLP, 58 milliards pour l'attention et 1,2 milliard pour l'embedding et l'unembedding.
+Veux-tu le détail de l'attention ?
+U: oui pour l'attention
+A: Dans GPT-3 : d = 12 288, chaque tête projette vers 128 dimensions, avec 96 têtes et 96 couches.
+Chaque type de matrice (Query, Key, Value, Sortie) compte 128 × 12 288 × 96 × 96 = 14 495 514 624 paramètres. Avec les quatre types : 4 × 14 495 514 624 = 57 982 058 496, soit environ 58 milliards.
+On remarque que l'attention pèse exactement autant que l'une des deux projections du MLP, car 4 × 128 × 96 = 49 152, le nombre de neurones du MLP.
+Combien de paramètres compte une seule tête, pour ses quatre matrices ?
+
+=== S026 | follow_up | quiz_continue
+U: pose moi une question sur le cours
+A: D'accord. Question : dans un Transformer, quelle brique fait circuler l'information entre les tokens : l'attention, le MLP ou la LayerNorm ?
+U: l'attention
+A: Exact. Seule l'attention compare les tokens entre eux et mélange leurs Values. Le MLP et la LayerNorm traitent chaque token séparément.
+Question suivante : à quoi sert le masque causal dans cette attention ?
+U: à ne pas voir les tokens d'après
+A: C'est ça. Le masque met −∞ sur les scores vers les tokens futurs avant la softmax, ce qui leur donne un poids nul. Sans lui, le modèle verrait pendant l'entraînement le token qu'il doit prédire, et ne saurait plus générer.
+Tu as répondu juste aux deux questions. Veux-tu une question plus difficile, sur la division par √d_k ?
+
+=== S027 | follow_up | quiz_continue
+U: Interroge moi sur les métriques
+A: Question : un modèle a une exactitude de 95 % sur un jeu où 95 % des exemples sont négatifs. Peut-on dire qu'il est bon ?
+U: oui 95% c'est très bien
+A: Pas forcément : un modèle qui répond toujours « négatif » obtient exactement 95 % sur ce jeu, sans reconnaître aucun positif. Avec une classe aussi déséquilibrée, l'exactitude seule ne dit presque rien.
+Il faut regarder la matrice de confusion, le rappel de la classe positive et le F1 macro. C'est le piège décrit dans le cours avec 1 000 avis dont 10 positifs.
+Essayons une autre question : quelle métrique regarderais-tu en premier pour vérifier qu'il trouve bien les positifs ?
+U: le rappel
+A: Exact : le rappel de la classe positive, VP / (VP + FN), dit combien de vrais positifs le modèle retrouve. Pour un modèle constant « négatif », il vaut 0 %, ce qui révèle immédiatement le problème que l'exactitude cachait.
+Veux-tu continuer avec une question sur le seuil de décision ?
+
+=== S028 | follow_up | hors_perimetre_puis_cours
+U: tu peux m'aider à choisir un ordinateur portable ?
+A: Ce choix sort du cadre de ce que je peux faire : je suis limité au cours de NLP et de Transformers d'ING3. Je peux en revanche t'expliquer pourquoi l'entraînement d'un modèle demande autant de mémoire, si ça t'aide à réfléchir à ton besoin.
+Veux-tu qu'on regarde ça ?
+U: ok vas-y, pourquoi ça prend autant de mémoire ?
+A: Pendant un entraînement complet, on garde en mémoire quatre choses :
+- les poids : 4 octets par paramètre en fp32 ;
+- les gradients : autant que les poids ;
+- les états de l'optimiseur : AdamW stocke deux moyennes par paramètre, soit deux fois les poids ;
+- les activations du passage avant, qui grandissent avec la taille des batchs et la longueur des séquences.
+Pour 500 millions de paramètres, cela fait déjà environ 8 Go sans les activations. LoRA réduit fortement les gradients et les états de l'optimiseur, car seuls les adaptateurs en ont besoin ; les activations, elles, restent nécessaires pour la rétropropagation.
+Laquelle de ces quatre parts dépend de la longueur des séquences ?
+
+=== S029 | follow_up | precision_question
+U: c'est quoi un token ?
+A: Un token est l'unité de base que manipule un modèle de langage : un mot, un morceau de mot ou un signe de ponctuation, selon le tokenizer. Chaque token a un identifiant entier, qui sert d'index dans la matrice d'embedding.
+Veux-tu voir comment une phrase est découpée ?
+U: oui avec "Le chat dort sur le canapé"
+A: Le découpage exact dépend du tokenizer, mais avec un vocabulaire de sous-mots courant, une phrase aussi simple donne en général un token par mot, l'espace étant collé au mot suivant : « Le », « ␣chat », « ␣dort », « ␣sur », « ␣le », « ␣canapé ». Un mot plus rare ou plus long serait découpé en plusieurs morceaux, et « canapé » peut lui-même être coupé selon le vocabulaire.
+Chaque morceau devient ensuite un identifiant, puis un vecteur. Le plus sûr est de le vérifier dans le notebook avec tokenizer.tokenize(phrase).
+Pourquoi l'espace est-il souvent collé au début du token plutôt qu'à la fin ?
+
+=== S030 | unverifiable | gpt4_couches
+U: Le cours dit combien de couches pour GPT-3 ?
+A: Le cours prend GPT-3 dans sa version de 175 milliards de paramètres : 96 couches, chacune avec 96 têtes d'attention, et des embeddings de 12 288 dimensions.
+Veux-tu le décompte des paramètres associé ?
+U: Et pour GPT-4 c'est combien de couches ?
+A: Le cours ne donne pas ce chiffre, et OpenAI n'a pas publié l'architecture de GPT-4 : nombre de couches, de têtes et de paramètres ne sont pas connus officiellement. Les chiffres qui circulent sont des estimations non vérifiables, donc je préfère ne pas t'en donner.
+Ce qui est vérifiable, c'est le raisonnement du cours : avec d, le nombre de couches, de têtes et la taille du MLP, tu peux recompter les paramètres de n'importe quel modèle dont l'architecture est publiée.
+Veux-tu qu'on fasse ce calcul pour un petit modèle ouvert comme Qwen2.5-0.5B ?
+
+=== S031 | follow_up | correction_erreur
+U: le top-p garde les p tokens les plus probables c'est ça ?
+A: Pas tout à fait. Le top-p ne fixe pas un nombre de tokens : il garde le plus petit ensemble de tokens dont la probabilité cumulée atteint p, par exemple 0,9. Le nombre de tokens gardés varie donc selon la distribution. Garder un nombre fixe de tokens, c'est le top-k.
+Veux-tu un exemple pour bien voir la différence ?
+U: oui
+A: Prenons deux contextes avec p = 0,9 :
+- distribution confiante (95 %, 3 %, 1 %, 1 %) : le premier token suffit à dépasser 90 %, le top-p n'en garde qu'un ;
+- distribution hésitante (30 %, 25 %, 20 %, 15 %, 10 %) : il faut cinq tokens pour atteindre 90 %, le top-p les garde tous.
+Un top-k = 2 garderait deux tokens dans les deux cas. C'est cette adaptation à la confiance du modèle qui fait l'intérêt du top-p.
+Avec la distribution hésitante et p = 0,5, combien de tokens resteraient ?
+
+=== S032 | follow_up | prompt_agent
+U: c'est quoi un message système ?
+A: C'est le premier message de la conversation, avec le rôle system. Il contient les règles stables de l'application : identité de l'assistant, périmètre, ton, format attendu, limites. Les messages user portent ensuite les demandes, et les messages assistant les réponses précédentes.
+Veux-tu un exemple de message système bien construit ?
+U: oui pour un chatbot de cinéma
+A: En suivant les six composants du cours :
+« Tu es l'assistant d'un site d'avis de cinéma (objectif, contexte). Tu réponds aux questions sur les films du catalogue fourni et tu aides à rédiger un avis. Tu réponds en français, en trois phrases au plus, sans révéler la fin des films (contraintes, format). Si on te demande autre chose, dis-le poliment. Exemple : … (exemples). Une bonne réponse cite le titre exact du film et ne mentionne que des informations du catalogue (critères). »
+On teste ensuite ce prompt sur un petit jeu de questions, y compris hors périmètre.
+Quelle question piège ajouterais-tu à ce jeu de test ?
+
+=== S033 | follow_up | tokenisation_couts
+U: Pourquoi le français coûte plus de tokens que l'anglais ?
+A: Parce que le vocabulaire de sous-mots est appris sur un corpus, souvent majoritairement anglais. Les mots anglais fréquents deviennent des tokens entiers, alors que les mots français sont découpés en plusieurs morceaux. Au TP3, la même phrase faisait 11 tokens en français contre 6 en anglais avec distilgpt2.
+Veux-tu savoir ce que ça change en pratique ?
+U: oui
+A: Trois conséquences concrètes :
+- le français consomme davantage de fenêtre de contexte : moins d'historique et de documents tiennent dans le même budget ;
+- il coûte plus cher et prend plus de temps, car le coût d'un LLM se compte en tokens ;
+- le modèle a vu moins de français pendant son entraînement, donc il le prédit en général moins bien.
+C'est un argument de choix de modèle : pour un agent francophone, on préfère un modèle multilingue dont le tokenizer découpe raisonnablement le français.
+Comment pourrais-tu mesurer ce surcoût pour le modèle que tu utilises ?
+
+=== S034 | follow_up | evaluation
+U: comment évaluer mon chatbot avant/après LoRA ?
+A: Avec un protocole fixé avant de regarder les sorties : un jeu de requêtes de test jamais vues pendant l'entraînement, les mêmes paramètres de génération pour les deux versions, et une grille de critères notés sur une échelle explicite.
+Veux-tu un exemple de grille ?
+U: oui
+A: Par exemple, chaque critère noté de 0 à 2 :
+- pertinence et correction : 0 faux, 1 partiellement juste, 2 juste et complet ;
+- respect du rôle et du format : langue, longueur, ton, structure attendue ;
+- prise en compte de l'historique : seulement pour les requêtes à plusieurs tours ;
+- reconnaissance du hors-périmètre : refus et redirection quand il le faut, pas de refus abusif sinon ;
+- informations inventées : 2 si aucune, 0 si une affirmation fausse est présentée comme sûre.
+On complète par quelques mesures automatiques (perte sur les réponses de référence, longueur, format) et par l'analyse d'au moins cinq réussites ou erreurs.
+Pourquoi utiliser le greedy pour les deux versions pendant cette évaluation ?
+
+=== S035 | follow_up | instruction_tuning
+U: Pourquoi un modèle Instruct répond mieux qu'un modèle de base ?
+A: Parce qu'il a suivi une étape d'instruction tuning : après le pré-entraînement, il a appris sur des exemples d'instructions et de réponses, avec un format de conversation précis. Il sait donc qu'une consigne attend une réponse, au lieu de simplement continuer le texte.
+Veux-tu voir ce que ça implique pour le format des messages ?
+U: oui
+A: Un modèle Instruct attend exactement le format de conversation de son instruction tuning, appelé chat template. Pour Qwen, chaque message est encadré par <|im_start|> suivi du rôle, puis <|im_end|>. Si on lui envoie du texte brut sans ces balises, il retrouve moins bien la structure apprise et répond moins bien.
+D'où la règle pratique : toujours passer par tokenizer.apply_chat_template, et utiliser le même format pour l'adaptation LoRA et pour l'utilisation.
+Que fait l'option add_generation_prompt=True de cette fonction ?
+
+=== S036 | follow_up | bigramme
+U: le modèle bigramme du TP1 transformers génère du charabia, c'est normal ?
+A: Oui, c'est attendu. Le bigramme ne regarde que le dernier caractère pour prédire le suivant : il apprend des paires plausibles (« q » suivi de « u »), mais n'a aucune mémoire du mot ou de la phrase en cours. Le texte ressemble localement à de l'anglais, avec des mots inventés.
+Veux-tu voir ce qui améliore le texte dans les TP suivants ?
+U: oui
+A: Chaque TP ajoute ce qui manque au bigramme :
+- TP2 : l'auto-attention, qui permet de regarder tous les caractères précédents dans la fenêtre, pas seulement le dernier ;
+- TP3 : la LayerNorm, le MLP et les connexions résiduelles, pour stabiliser et enrichir les représentations ;
+- TP4 : les embeddings de position et l'empilement de blocs, d'où un vrai mini-Transformer.
+Au TP4, la perte de validation descendait à environ 1,88, contre 2,50 pour le bigramme, et le modèle apprenait la mise en page des répliques.
+Pourquoi les embeddings de position deviennent-ils nécessaires dès qu'on ajoute l'attention ?

@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --surface: #0e0e10;
+  --surface-raised: #18181b;
+  --border: #1f1f23;
+  --border-strong: #34343a;
+  --foreground: #ededef;
+  --muted: #8b8b93;
+  --subtle: #74747c;
+  --green: oklch(0.82 0.13 160);
+  --red: oklch(0.72 0.16 25);
+  /* une teinte par token, en alternance */
+  --token-amber: oklch(0.85 0.12 85);
+  --token-mint: oklch(0.83 0.12 165);
+  --token-pink: oklch(0.8 0.12 355);
+  --token-sky: oklch(0.8 0.1 245);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --font-sans: var(--font-mona-sans);
+}
+
+/* couche base : les utilitaires (focus:outline-none…) doivent pouvoir les surcharger */
+@layer base {
+  html {
+    background: var(--background);
+  }
+
+  body {
+    color: var(--foreground);
+    background: var(--background);
+    font-family: var(--font-mona-sans), system-ui, sans-serif;
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--foreground);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    color: var(--foreground);
+    background: color-mix(in oklch, var(--token-amber) 35%, transparent);
+  }
+}
+
+.scroll-area {
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  mask-image: linear-gradient(to bottom, transparent, #000 1.25rem, #000 calc(100% - 1.25rem), transparent);
+}
+
+/* ---- tokens ---- */
+
+.token {
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.token:nth-child(4n + 1) { --hue: var(--token-amber); }
+.token:nth-child(4n + 2) { --hue: var(--token-mint); }
+.token:nth-child(4n + 3) { --hue: var(--token-pink); }
+.token:nth-child(4n + 4) { --hue: var(--token-sky); }
+
+/* pendant la génération, chaque nouveau token s'allume dans sa teinte puis revient à la couleur du texte */
+.token-new {
+  animation: light-then-fade 1.4s ease-out forwards;
+}
+
+@keyframes light-then-fade {
+  from {
+    color: var(--hue);
+    background-color: color-mix(in oklch, var(--hue) 28%, transparent);
+  }
+  to {
+    color: var(--foreground);
+    background-color: transparent;
+  }
+}
+
+.tokens-visible .token {
+  animation: none;
+  background-color: color-mix(in oklch, var(--hue) 22%, transparent);
+}
+
+.token-bar {
+  transform-origin: left;
+  animation: draw-bar 0.6s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+@keyframes draw-bar {
+  from { transform: scaleX(0); }
+}
+
+.token-id,
+dialog[open] {
+  animation: fade-in 0.6s ease-out both;
+}
+
+dialog[open] {
+  animation-duration: 0.15s;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+.cursor {
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  vertical-align: -0.17em;
+  border-radius: 2px;
+  background: var(--foreground);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .token-new,
+  .token-bar,
+  .token-id,
+  dialog[open],
+  .cursor {
+    animation: none;
+  }
+}

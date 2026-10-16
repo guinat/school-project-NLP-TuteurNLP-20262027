@@ -1,0 +1,354 @@
+# Dialogues : pipeline NLP, prétraitement, tokenisation, représentations du texte.
+# Format : une ligne "=== id | type | notion" ouvre un dialogue, puis des messages "U:" (étudiant)
+# et "A:" (tuteur). Un message peut s'étendre sur plusieurs lignes.
+
+=== P001 | explanation | definition_nlp
+U: C'est quoi exactement le NLP ?
+A: Le NLP (Natural Language Processing, traitement automatique du langage) cherche à analyser, comprendre ou produire du langage humain sous une forme exploitable par une machine : une classe, une réponse, une action.
+Le cours le résume en trois familles d'usages : comprendre (classification, sentiment, entités), transformer (traduction, résumé) et interagir (questions-réponses, chatbots).
+La difficulté vient de l'ambiguïté, de la variabilité des formulations, du contexte et de l'implicite.
+Dans quelle famille rangerais-tu l'analyse de sentiment d'avis Allociné ?
+
+=== P002 | explanation | ambiguite
+U: pourquoi on dit que le langage est ambigu à plusieurs niveaux ?
+A: Parce qu'une phrase peut avoir plusieurs sens, et que le contexte nécessaire pour trancher s'élargit à chaque niveau :
+- lexical : « L'avocat est excellent » (le juriste ou le fruit ?) ;
+- syntaxique : « J'ai vu l'homme avec les jumelles » (qui tient les jumelles ?) ;
+- pragmatique : « Il fait froid ici » (simple constat ou demande de fermer la fenêtre ?).
+On passe ainsi du mot à la phrase, puis à la situation.
+D'après toi, quel niveau d'ambiguïté un embedding contextualisé aide-t-il surtout à résoudre ?
+
+=== P003 | explanation | paradigmes
+U: Quels sont les trois grands paradigmes du NLP ?
+A: Le cours en distingue trois :
+- symbolique (environ 1950-1980) : les connaissances sont écrites à la main, avec des règles et des lexiques, comme ELIZA en 1966 ;
+- statistique (environ 1980-2010) : on estime des probabilités sur des corpus, par exemple pour la traduction statistique ;
+- neuronal (depuis 2010) : un réseau apprend lui-même ses représentations, avec les embeddings en 2013 puis le Transformer en 2017.
+Ces approches ne s'effacent pas : les systèmes actuels restent souvent hybrides.
+Un système à base de mots-clés écrits à la main relève de quel paradigme ?
+
+=== P004 | explanation | pipeline
+U: Quelles sont les étapes du pipeline NLP classique ?
+A: Le pipeline classique enchaîne quatre décisions :
+1. prétraitement : nettoyer et tokeniser le texte ;
+2. représentation : transformer le texte en vecteurs (comptages, TF-IDF, embeddings) ;
+3. modélisation : apprendre une fonction, par exemple une régression logistique ;
+4. évaluation : mesurer les erreurs sur des données jamais vues.
+Avec un Transformer, les étapes 2 et 3 deviennent tokens, puis embeddings contextualisés, puis tête de prédiction, mais la logique d'évaluation reste la même.
+À quelle étape se calcule le vocabulaire, et sur quelle partie des données doit-on le calculer ?
+
+=== P005 | explanation | pretraitement
+U: Le prétraitement ça consiste en quoi ?
+A: Prétraiter, c'est contrôler ce que le modèle voit. Le cours distingue quatre opérations :
+- nettoyer : retirer balises, liens, doublons, caractères parasites ;
+- normaliser : casse, Unicode, nombres, orthographe ;
+- tokeniser : découper en mots, sous-mots ou caractères ;
+- adapter : stopwords, lemmes, padding, troncature.
+Il n'y a pas de recette universelle : chaque transformation peut supprimer un signal utile. Pour le sentiment, « EXCELLENT !!! » porte plus d'émotion que « excellent ».
+Pourquoi faut-il ajuster ces transformations sur le train uniquement ?
+
+=== P006 | explanation | stopwords
+U: Je comprends pas le piège des stopwords
+A: Les stopwords sont des mots très fréquents (le, de, ne, pas…) qu'on retire souvent pour réduire le bruit. Le piège, c'est qu'ils portent parfois le signal recherché.
+Exemple du cours : « Je n'ai pas aimé ce film ». Une suppression naïve donne « aimé film », qui ressemble à un avis positif. On a détruit la négation, c'est-à-dire exactement l'information utile au classifieur de sentiment.
+Il faut donc vérifier, pour chaque tâche, que la liste de stopwords ne contient pas de mots discriminants.
+Quel autre type de mot risquerait d'être supprimé à tort dans une tâche de sentiment ?
+
+=== P007 | comparison | stemming_lemmatisation
+U: Différence entre stemming et lemmatisation ?
+A: Les deux ramènent des formes différentes d'un mot à une forme commune, mais pas de la même façon :
+- le stemming coupe la fin du mot avec des règles heuristiques : « manger, mangeait » donnent « mang », qui n'est pas un vrai mot ;
+- la lemmatisation renvoie la forme du dictionnaire grâce à une analyse linguistique : « mangeait » donne « manger ».
+Le stemming est plus rapide et plus grossier, la lemmatisation plus précise mais plus coûteuse.
+Si tu devais regrouper « couvent » (le lieu) et « couvent » (le verbe), lequel des deux t'aiderait vraiment ?
+
+=== P008 | explanation | tokenisation
+U: c'est quoi la tokenisation
+A: Tokeniser, c'est choisir les unités dans lesquelles on découpe le texte. Trois granularités sont possibles :
+- mots : vocabulaire très large, séquences courtes ;
+- caractères : vocabulaire minuscule, séquences très longues ;
+- sous-mots : le compromis utilisé par les Transformers, par exemple « excellent » découpé en « excell » + « ent ».
+Dans un Transformer, la chaîne est toujours la même : texte, puis tokens, puis identifiants entiers, puis embeddings.
+Quel inconvénient aurait une tokenisation en mots face à une faute de frappe ?
+
+=== P009 | explanation | sous_mots_bpe
+U: Comment est construit un vocabulaire de sous-mots type BPE ?
+A: Le BPE (Byte Pair Encoding) part des caractères et fusionne progressivement les paires les plus fréquentes du corpus d'entraînement. « e » + « n » devient « en », puis « en » + « t » devient « ent », et ainsi de suite jusqu'à atteindre la taille de vocabulaire voulue.
+Résultat : les mots fréquents deviennent un seul token, les mots rares sont découpés en morceaux connus, et aucun mot n'est jamais totalement inconnu.
+C'est pour ça qu'un tokenizer appris surtout sur de l'anglais découpe davantage le français : dans le TP3, « vraiment » sortait en trois morceaux avec distilgpt2.
+Quelle conséquence ce découpage a-t-il sur la fenêtre de contexte ?
+
+=== P010 | explanation | identifiants_tokens
+U: Pourquoi les tokens sont transformés en entiers ?
+A: Parce qu'un réseau ne manipule que des nombres. Chaque token du vocabulaire reçoit un identifiant entier, qui sert uniquement d'index : il désigne une ligne de la matrice d'embedding.
+Dans le cours : « Le chat dort » donne les tokens [Le, chat, dort], puis par exemple les identifiants [45, 781, 309], puis trois vecteurs lus dans la matrice.
+L'identifiant n'a aucun sens par lui-même : 781 n'est pas « plus grand » que 45 dans un sens linguistique.
+Pourquoi le test decode(encode(texte)) == texte est-il utile quand on construit un tokenizer ?
+
+=== P011 | explanation | sac_de_mots
+U: Explique moi le bag of words
+A: Le sac de mots représente un texte par le nombre d'occurrences de chaque mot d'un vocabulaire commun. Chaque position du vecteur garde le même sens pour tous les documents.
+Exemple du cours, avec le vocabulaire (excellent, ennuyeux, film) :
+- « Ce film est excellent. » donne (1, 0, 1) ;
+- « Ce film est ennuyeux. » donne (0, 1, 1) ;
+- « Excellent, ce film ! » donne aussi (1, 0, 1).
+Les deux avis D1 et D3 ont le même vecteur : l'ordre des mots et la ponctuation ont disparu. Les vecteurs sont aussi très creux, car la plupart des mots sont absents d'un texte donné.
+Comment pourrait-on garder un peu d'information sur l'ordre des mots ?
+
+=== P012 | calculation | tfidf
+U: Tu peux me refaire le calcul TF-IDF du cours ?
+A: On prend les trois avis du cours : D1 « Ce film est excellent », D2 « Ce film est ennuyeux », D3 « Excellent, ce film ! ».
+Le poids vaut TF × ln(nombre d'avis / nombre d'avis contenant le mot) :
+- excellent : présent dans 2 avis sur 3, IDF = ln(3/2) ≈ 0,41 ;
+- ennuyeux : présent dans 1 avis, IDF = ln(3) ≈ 1,10 ;
+- film : présent dans les 3 avis, IDF = ln(1) = 0.
+Pour D1, le vecteur de comptages (1, 0, 1) devient environ (0,41 ; 0 ; 0). « Film » ne distingue aucun avis, il perd donc tout son poids.
+Quel serait le poids de « ennuyeux » dans D2 ?
+
+=== P013 | explanation | tfidf
+U: Quel est l'intérêt de l'IDF par rapport aux simples comptages ?
+A: L'IDF (Inverse Document Frequency) baisse le poids des mots présents partout et augmente celui des mots qui distinguent les documents.
+Un mot présent dans tous les avis, comme « film » dans l'exemple du cours, reçoit IDF = ln(1) = 0 : il n'aide pas à séparer les classes. Un mot rare comme « ennuyeux » reçoit ln(3) ≈ 1,10.
+Attention à la fuite de données : les IDF sont des quantités apprises, elles doivent être calculées sur le train uniquement, puis appliquées à la validation et au test.
+Un mot qui n'apparaît dans aucun avis du train, que devient-il dans un avis de test ?
+
+=== P014 | comparison | embeddings_statique_contextuel
+U: Quelle est la différence entre un embedding statique et un embedding contextualisé ?
+A: Un embedding statique associe un seul vecteur à chaque token, quel que soit le contexte : « avocat » a le même vecteur dans « L'avocat plaide » et dans « Je mange un avocat », ce qui mélange les deux sens.
+Un embedding contextualisé est recalculé pour chaque occurrence à partir de toute la phrase. Dans un Transformer, c'est l'attention qui transforme l'embedding de départ en représentation contextualisée.
+Le cours le formule ainsi : embedding de token + position + attention donne la représentation contextualisée.
+Avec quel type d'embedding le mot « couvent » de « Les poules du couvent couvent » peut-il recevoir deux sens différents ?
+
+=== P015 | explanation | representations
+U: Quelles représentations de texte on a vues ?
+A: Le cours en présente quatre, de la plus simple à la plus riche :
+1. le sac de mots : des comptages, creux et sans ordre ;
+2. la pondération (TF-IDF) : des poids plus informatifs, toujours creux ;
+3. les embeddings : des vecteurs denses appris, un sens moyen par token ;
+4. les représentations contextualisées : des vecteurs recalculés selon la phrase.
+Les deux premières sont construites directement à partir du corpus, les deux dernières sont apprises par un réseau. Plus la représentation capture le contexte, moins le modèle suivant doit le reconstruire.
+Laquelle de ces représentations utilisais-tu au TP1 avec la régression logistique ?
+
+=== P016 | explanation | produit_scalaire_embeddings
+U: Pourquoi on utilise le produit scalaire pour comparer des embeddings ?
+A: Parce que le produit scalaire mesure l'alignement de deux vecteurs : v · w = somme des v_i × w_i.
+- il est positif quand les vecteurs pointent dans des directions proches ;
+- nul quand ils sont orthogonaux ;
+- négatif quand ils sont opposés.
+Comme l'entraînement place les tokens d'usages proches dans des directions voisines, « chat » et « félin » ont un grand produit scalaire, « chat » et « avion » un produit faible. Le même calcul revient ensuite partout : entre Query et Key dans l'attention, et entre le vecteur final et chaque ligne de l'unembedding.
+Que mesure le cosinus par rapport au produit scalaire brut ?
+
+=== P017 | explanation | analogies_embeddings
+U: c'est quoi l'histoire roi - homme + femme = reine
+A: C'est l'exemple classique de Mikolov et al. (2013) : dans l'espace des embeddings, certaines relations deviennent des directions. Le vecteur E(roi) − E(homme) + E(femme) tombe très près de E(reine).
+Autrement dit, la différence « femme − homme » encode une direction du genre, qu'on peut ajouter à « roi ». Le cours montre la même idée avec le pluriel : E(chats) − E(chat) ≈ E(chiens) − E(chien).
+C'est une intuition utile, mais une approximation : on cherche le vecteur le plus proche, l'égalité n'est jamais exacte.
+Quelle direction obtiendrais-tu avec E(Italie) − E(Mussolini) + E(Hitler) ?
+
+=== P018 | explanation | fuite_donnees
+U: C'est quoi une fuite de données ?
+A: Une fuite de données, c'est quand une information du test (ou de la validation) influence l'entraînement. Le score obtenu devient alors trop optimiste.
+Exemples du cours : calculer le vocabulaire, les IDF ou une normalisation sur tout le jeu de données au lieu du train seul. Les doublons entre train et test en sont une autre forme.
+La règle : tout composant appris (vocabulaire, fréquences, paramètres, seuil) s'ajuste sur le train, se règle sur la validation, et le test sert une seule fois à la fin.
+Pourquoi un doublon train/test avantage-t-il un modèle qui mémorise ?
+
+=== P019 | explanation | train_val_test
+U: À quoi servent les trois ensembles train validation test ?
+A: Chacun a un rôle précis :
+- train (par exemple 70 %) : apprendre le vocabulaire, les IDF et les paramètres ;
+- validation (15 %) : choisir les hyperparamètres et le seuil de décision ;
+- test (15 %) : estimer une seule fois la performance finale.
+Le découpage 70/15/15 est illustratif : il dépend de la taille des données. Ce qui compte, c'est que le test ne serve jamais à faire un choix, sinon il ne mesure plus la généralisation.
+Si tu choisis ton nombre d'époques en regardant le test, quel problème crées-tu ?
+
+=== P020 | explanation | validation_croisee
+U: Comment marche la validation croisée ?
+A: On découpe les données d'apprentissage en k blocs (k = 3 dans le cours). Chaque bloc sert une fois de validation pendant que les autres servent à l'entraînement. On obtient k scores, dont on regarde la moyenne et la dispersion.
+Point important : il faut recalculer vocabulaire et pondérations dans chaque pli, sinon on crée une fuite.
+Une fois le réglage choisi, on réentraîne sur l'ensemble d'apprentissage, puis on mesure une seule fois sur le test indépendant.
+Pourquoi la dispersion des k scores est-elle aussi intéressante que leur moyenne ?
+
+=== P021 | explanation | types_apprentissage
+U: supervisé, non supervisé, auto-supervisé... je mélange tout
+A: Tout dépend du signal disponible :
+- supervisé : chaque avis a une cible, par exemple positif ou négatif ;
+- semi-supervisé : peu d'avis annotés, beaucoup de texte sans étiquette ;
+- non supervisé : aucune cible, on cherche des groupes (clustering) ;
+- auto-supervisé : la cible est extraite du texte lui-même, comme prédire « excellent » après « Ce film est » ;
+- renforcement : des actions et des récompenses.
+Les LLM sont pré-entraînés de façon auto-supervisée : le texte fournit lui-même le token à prédire.
+Dans quelle catégorie places-tu le regroupement d'avis par thème ?
+
+=== P022 | explanation | auto_supervise
+U: Pourquoi on dit que le pré-entraînement d'un LLM est auto-supervisé ?
+A: Parce qu'aucun humain n'annote les données : la cible est le texte lui-même. Pour la phrase « Michael Jackson est un chanteur », le modèle reçoit « Michael Jackson est un » et doit prédire « chanteur », le token réellement présent.
+Une seule phrase fournit même plusieurs exercices : à chaque position, il faut prédire le token suivant en ne regardant que la gauche. C'est ce qui permet d'apprendre sur des centaines de milliards de tokens sans étiquetage manuel.
+Combien de prédictions fournit la séquence « Le petit chaperon rouge » ?
+
+=== P023 | quiz | tokenisation
+U: Interroge moi sur la tokenisation
+A: D'accord. Question : on tokenise « Ce film est excellent. » en caractères, puis en sous-mots. Laquelle des deux tokenisations donne la séquence la plus longue, et laquelle donne le vocabulaire le plus petit ?
+U: les caractères donnent la séquence la plus longue et le vocabulaire le plus petit
+A: Exact, sur les deux points. En caractères, chaque lettre et chaque espace devient un token : la séquence est longue, mais le vocabulaire se limite à quelques dizaines de symboles (65 pour Tiny Shakespeare). Les sous-mots font le compromis inverse : un vocabulaire de plusieurs dizaines de milliers d'unités pour des séquences beaucoup plus courtes.
+Question suivante : pourquoi une séquence plus longue coûte-t-elle plus cher dans un Transformer ?
+
+=== P024 | quiz | tfidf
+U: Pose moi une question sur TF-IDF
+A: Allons-y. Dans un corpus de 4 avis, le mot « navet » apparaît dans un seul avis, une fois. Quel est son poids TF-IDF dans cet avis, avec la convention du cours (sans lissage) ?
+U: 1 x ln(4) donc environ 1,39
+A: C'est juste : TF = 1 et IDF = ln(4/1) = ln(4) ≈ 1,39, donc le poids vaut environ 1,39. Le mot est rare, il reçoit un poids élevé, ce qui est logique puisqu'il est très discriminant.
+Et si « navet » apparaissait dans les 4 avis, quel serait son poids ?
+
+=== P025 | quiz | stopwords
+U: Teste moi sur le prétraitement
+A: Question : tu construis un classifieur de sentiment et tu supprimes les stopwords avec une liste standard qui contient « ne » et « pas ». Que devient l'avis « Ce film n'est pas bon » et pourquoi est-ce un problème ?
+U: ça devient film bon et le modèle risque de le classer positif
+A: Exactement. Après suppression, il reste « film bon » : la négation a disparu et l'avis négatif ressemble à un avis positif. C'est l'exemple du cours avec « Je n'ai pas aimé ce film ».
+La bonne pratique est de garder les négations, ou de vérifier l'effet de chaque étape de nettoyage sur la validation.
+Autre question : pourquoi un emoji peut-il être utile à garder pour ce même classifieur ?
+
+=== P026 | calculation | sac_de_mots
+U: donne moi un exemple de sac de mots avec deux phrases
+A: Prenons « le chat dort » et « le chat mange le poisson ». Le vocabulaire commun, trié, est (chat, dort, le, mange, poisson).
+- « le chat dort » donne (1, 1, 1, 0, 0) ;
+- « le chat mange le poisson » donne (1, 0, 2, 1, 1).
+« le » compte 2 dans la deuxième phrase, car le sac de mots compte les occurrences. On voit aussi que l'ordre a disparu : « le poisson mange le chat » aurait exactement le même vecteur.
+Quel serait le vecteur de « le poisson dort » avec ce même vocabulaire ?
+
+=== P027 | explanation | bigrammes_features
+U: Un bigramme c'est quoi dans le contexte du sac de mots ?
+A: Un bigramme est une paire de mots consécutifs, par exemple « film excellent » ou « pas bon ». L'ajouter comme caractéristique permet de garder un peu d'ordre local dans un sac de mots.
+C'est particulièrement utile pour les négations : « pas bon » devient une unité à part, au lieu de deux mots indépendants. Le prix à payer est un vocabulaire beaucoup plus grand, donc des vecteurs encore plus creux.
+Ne confonds pas avec le modèle bigramme du TP Transformers, qui prédit le caractère suivant à partir du caractère courant.
+Combien de bigrammes contient la phrase « je n'aime pas ce film » découpée en cinq mots ?
+
+=== P028 | explanation | nettoyage_information
+U: Est-ce qu'il faut toujours tout nettoyer avant d'entraîner ?
+A: Non. Le cours insiste : chaque opération doit être justifiée, car simplifier n'aide que si le signal supprimé est inutile.
+Exemples de signaux qu'on risque de perdre : les majuscules et la ponctuation (« ÉNORME!!! »), les emojis, les négations. Et avec un modèle pré-entraîné, on fait beaucoup moins de nettoyage manuel : il attend son propre tokenizer et a appris sur du texte brut.
+La bonne démarche est de mesurer l'effet de chaque étape sur la validation plutôt que d'appliquer une recette.
+Pour un Transformer comme Qwen ou GPT-2, faut-il passer le texte en minuscules avant de le tokeniser ?
+
+=== P029 | explanation | normalisation_unicode
+U: c'est quoi normaliser un texte
+A: Normaliser, c'est ramener des écritures différentes d'un même contenu à une forme unique : casse, encodage Unicode, espaces, nombres, parfois orthographe.
+Par exemple « ÉNORME!!! » peut devenir « énorme ! », et un « é » codé de deux façons Unicode différentes doit devenir un seul caractère, sinon le vocabulaire contient deux tokens pour la même lettre.
+Le risque est le même que pour le nettoyage : passer en minuscules ou réduire la ponctuation peut effacer de l'émotion utile au sentiment.
+Pourquoi précise-t-on encoding="utf-8" en lisant le fichier Tiny Shakespeare ?
+
+=== P030 | comparison | mots_caracteres
+U: Pourquoi les Transformers utilisent des sous-mots plutôt que des mots entiers ?
+A: Les sous-mots évitent les deux défauts extrêmes :
+- en mots entiers, le vocabulaire devient énorme et tout mot absent du vocabulaire (faute, néologisme) est inconnu ;
+- en caractères, les séquences deviennent très longues, ce qui coûte cher en attention.
+Avec des sous-mots, un mot rare est découpé en morceaux connus, donc rien n'est jamais totalement inconnu, et les séquences restent raisonnables. C'est le compromis que le cours associe aux Transformers.
+Que se passe-t-il avec un tokenizer en mots quand un utilisateur écrit « excelllent » avec trois l ?
+
+=== P031 | explanation | dimension_vecteurs
+U: Pourquoi on dit que les vecteurs TF-IDF sont creux ?
+A: Parce qu'ils ont une dimension par mot du vocabulaire, souvent des dizaines de milliers, alors qu'un avis n'en contient que quelques dizaines. Presque toutes les composantes valent donc zéro.
+On les stocke en matrices creuses pour économiser la mémoire. À l'inverse, un embedding est dense : quelques centaines de dimensions, presque toutes non nulles.
+C'est aussi pour ça qu'au TP2 on a réduit les vecteurs avec une SVD tronquée avant le perceptron multicouche.
+Quel inconvénient a cette réduction, d'après ce que tu as observé au TP2 ?
+
+=== P032 | explanation | embedding_appris
+U: Comment les embeddings sont appris ?
+A: Avant l'entraînement, on crée une matrice avec un vecteur par token du vocabulaire, initialisé avec de petites valeurs essentiellement aléatoires. Pendant l'entraînement, ces valeurs sont modifiées par descente de gradient, comme tous les autres paramètres, pour mieux prédire le token suivant.
+Les tokens qui apparaissent dans des contextes semblables reçoivent ainsi des vecteurs proches. Dans GPT-3, cette matrice fait 50 257 tokens × 12 288 dimensions, soit environ 617 millions de paramètres.
+Qu'est-ce qui, dans la matrice d'embedding, est modifié quand un token n'apparaît jamais dans un batch ?
+
+=== P033 | explanation | ambiguite_lexicale
+U: donne un exemple d'ambiguïté lexicale
+A: L'exemple du cours est « L'avocat est excellent » : « avocat » peut désigner le professionnel du droit ou le fruit. Le mot est le même, le sens dépend du contexte.
+Un autre exemple vu en cours : « Les poules du couvent couvent », où le premier « couvent » est un lieu et le second le verbe couver.
+Un embedding statique donne le même vecteur aux deux sens ; l'attention d'un Transformer permet au contraire d'enrichir chaque occurrence avec les mots qui l'entourent.
+Quel mot de la phrase « Je mange un avocat » permet de lever l'ambiguïté ?
+
+=== P034 | explanation | eliza
+U: c'était quoi ELIZA ?
+A: ELIZA est un programme de dialogue créé en 1966, cité dans le cours comme exemple du paradigme symbolique. Il fonctionnait avec des règles écrites à la main : repérer des motifs dans la phrase de l'utilisateur et les reformuler en question.
+Il n'apprenait rien et ne comprenait rien, mais donnait parfois l'illusion d'une conversation. C'est l'opposé d'un LLM, qui apprend ses régularités sur des données.
+Quel avantage garde quand même un système à règles par rapport à un réseau de neurones ?
+
+=== P035 | explanation | longueur_sequence
+U: Pourquoi la tokenisation influence le coût d'un LLM ?
+A: Parce qu'un LLM travaille en tokens : la fenêtre de contexte, le temps de calcul et souvent la facture d'une API se comptent en tokens. Un texte découpé en plus de morceaux coûte donc plus cher et occupe plus de place dans le contexte.
+Au TP3, la même phrase coûtait 11 tokens en français contre 6 en anglais avec distilgpt2, car son vocabulaire BPE a été appris surtout sur de l'anglais.
+En plus, l'attention compare chaque token à tous les précédents, donc le coût croît avec le carré de la longueur.
+Que se passe-t-il pour un prompt français très long si la fenêtre de contexte est fixée en tokens ?
+
+=== P036 | explanation | padding_troncature
+U: À quoi servent le padding et la troncature ?
+A: Pour former un batch, toutes les séquences doivent avoir la même longueur.
+- le padding complète les séquences trop courtes avec un token spécial, qu'on masque ensuite pour qu'il ne compte ni dans l'attention ni dans la perte ;
+- la troncature coupe les séquences trop longues à une longueur maximale.
+La troncature peut supprimer une information importante, par exemple la conclusion d'un avis. Il faut donc choisir la longueur maximale en regardant la distribution des longueurs dans les données.
+Si tu tronques un dialogue d'entraînement, quelle partie vaut-il mieux garder : le début ou la réponse finale ?
+
+=== P037 | calculation | identifiants
+U: si mon vocabulaire est ['a','b','c'] comment j'encode 'cab' ?
+A: On associe à chaque caractère son index dans la liste triée : a → 0, b → 1, c → 2. « cab » s'encode donc [2, 0, 1].
+Le décodage fait l'inverse : [2, 0, 1] redonne « cab ». C'est exactement le rôle de stoi et itos au TP1 Transformers : deux dictionnaires parfaitement inverses.
+Ces entiers servent seulement d'index dans la table d'embedding ; le modèle ne considère pas que « c » vaut deux fois « b ».
+Que vaudrait encode('abba') avec ce même vocabulaire ?
+
+=== P038 | quiz | representations
+U: une question sur les embeddings stp
+A: Question : dans la phrase « Le petit chaperon rouge », le token « chaperon » a-t-il le même vecteur à l'entrée du premier bloc d'attention et à la sortie du dernier bloc, et pourquoi ?
+U: non car l'attention ajoute des infos des autres mots
+A: C'est ça. À l'entrée, « chaperon » a son embedding de token plus son embedding de position, qui ne dépend pas des autres mots. Chaque couche d'attention lui ajoute ensuite une correction calculée à partir des tokens précédents, par exemple l'information « petit », grâce à la connexion résiduelle. À la sortie, le vecteur est contextualisé.
+Petite précision : avec le masque causal, « chaperon » ne reçoit rien de « rouge », qui vient après lui.
+Et le token « Le », en première position, peut-il être enrichi par l'attention ?
+
+=== P039 | explanation | difficultes_nlp
+U: Pourquoi le NLP est-il difficile ?
+A: Le cours cite quatre difficultés :
+- l'ambiguïté : un même énoncé peut avoir plusieurs sens ;
+- la variabilité : le même sens peut s'exprimer de mille façons, avec des fautes ;
+- le contexte : un mot dépend de ce qui précède et de la situation ;
+- l'implicite : tout n'est pas formulé explicitement.
+L'enjeu central est de formaliser le langage sans perdre le sens porté par les mots, leur structure et leur contexte.
+Laquelle de ces difficultés la tokenisation en sous-mots aide-t-elle à atténuer ?
+
+=== P040 | explanation | tokenizer_pre_entraine
+U: Je peux utiliser mon propre tokenizer avec un modèle pré-entraîné ?
+A: Non, il faut utiliser le tokenizer avec lequel le modèle a été entraîné. Les identifiants pointent vers des lignes précises de sa matrice d'embedding : avec un autre tokenizer, l'identifiant 781 désignerait un autre token, et le modèle recevrait un texte incohérent.
+C'est pour ça qu'avec Hugging Face on charge toujours le tokenizer et le modèle avec le même nom, par AutoTokenizer.from_pretrained et AutoModelForCausalLM.from_pretrained.
+Le tokenizer apporte aussi le format de conversation attendu par le modèle, son chat template.
+À ton avis, que se passerait-il si on ajoutait des tokens au vocabulaire sans agrandir la matrice d'embedding ?
+
+=== P041 | explanation | chat_template
+U: c'est quoi le chat template d'un tokenizer ?
+A: C'est le gabarit qui transforme une liste de messages (system, user, assistant) en un seul texte, avec les balises spéciales que le modèle a vues pendant son instruction tuning. Pour Qwen, chaque message est encadré par <|im_start|>rôle et <|im_end|>.
+On l'applique avec tokenizer.apply_chat_template(messages, add_generation_prompt=True) : la dernière option ajoute le début d'un message assistant, pour que le modèle sache que c'est à lui de répondre.
+Sans ce format, un modèle instructionnel répond beaucoup moins bien, car il ne retrouve pas la structure apprise.
+Pourquoi faut-il garder exactement le même format entre l'entraînement LoRA et l'utilisation ?
+
+=== P042 | explanation | ngram_vs_neuronal
+U: Quel est le lien entre un modèle bigramme et un LLM ?
+A: Les deux prédisent le token suivant et produisent une distribution de probabilité. La différence est le contexte utilisé :
+- le bigramme ne regarde que le token courant : au TP1 Transformers, c'est une simple table C × C de logits ;
+- un LLM regarde toute la fenêtre de contexte grâce à l'attention, et ses représentations sont apprises en profondeur.
+Le bigramme est donc un LLM minimal : même perte d'entropie croisée, même génération token par token, mais aucune mémoire au-delà d'un caractère.
+Dans le bigramme du TP1, que vaut P('u' | 'q') après entraînement, et pourquoi est-ce élevé ?
+
+=== P043 | explanation | perplexite
+U: c'est quoi la perplexité ?
+A: La perplexité est l'exponentielle de la perte moyenne d'entropie croisée : PPL = exp(L). Elle s'interprète comme le nombre de choix « équivalents » entre lesquels le modèle hésite à chaque token.
+Un modèle qui tirerait au hasard parmi 65 caractères a une perte de ln(65) ≈ 4,17, soit une perplexité de 65. Plus la perplexité est basse, mieux le modèle prédit le texte.
+Attention, elle ne se compare qu'entre modèles évalués sur les mêmes données avec le même tokenizer : un découpage plus fin change le nombre de prédictions.
+Si la perte de validation vaut 1,88, quelle est la perplexité correspondante ?
+
+=== P044 | calculation | perplexite
+U: Si ma loss passe de 2,3 à 1,6, ma perplexité passe de combien à combien ?
+A: On applique PPL = exp(perte) :
+- exp(2,3) ≈ 9,97, donc environ 10 ;
+- exp(1,6) ≈ 4,95, donc environ 5.
+La perplexité est divisée par deux : le modèle hésite en moyenne entre environ 5 tokens au lieu de 10. Une baisse de perte qui paraît modeste correspond donc à un gain net, car la relation est exponentielle.
+Vérifie toutefois que cette baisse vient bien de la validation et pas seulement du train. Sur quelles données faut-il mesurer cette perplexité pour conclure ?
+
+=== P045 | explanation | encodage_position
+U: pourquoi on ajoute une position aux embeddings ?
+A: Parce que l'embedding d'un token dit ce qu'il représente, mais pas où il se trouve. Or l'attention, à elle seule, ne connaît pas l'ordre : sans information de position, « le chat mange la souris » et « la souris mange le chat » contiendraient les mêmes vecteurs.
+Le cours l'écrit ainsi : E(0)_chat = E_chat + P_2. Le même mot reçoit donc un vecteur initial différent selon sa place. Dans GPT-3 comme dans le TP4, ces embeddings de position sont appris, dans une table de taille fenêtre × dimension.
+Quelle taille a la table de positions d'un modèle avec block_size = 8 et n_embd = 32 ?

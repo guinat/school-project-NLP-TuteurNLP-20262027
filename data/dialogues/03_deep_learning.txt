@@ -1,0 +1,221 @@
+# Dialogues : neurone, perte, rétropropagation, descente de gradient, réseaux récurrents.
+
+=== D001 | explanation | neurone
+U: Comment fonctionne un neurone artificiel ?
+A: Un neurone fait trois opérations : pondérer les entrées, additionner, puis activer.
+Avec l'exemple du cours : z = w1·x1 + w2·x2 + b, puis p = σ(z) avec la sigmoïde. Pour l'avis « Ce film est excellent », x = (1, 0). Au départ, w1 = w2 = b = 0, donc z = 0 et p = 0,5 : le neurone n'a encore rien appris.
+Un seul neurone sigmoïde est exactement une régression logistique. La suite consiste à apprendre ses poids à partir des erreurs.
+Que représente concrètement le poids w1 dans cet exemple ?
+
+=== D002 | explanation | mlp
+U: c'est quoi un perceptron multicouche
+A: Un perceptron multicouche (MLP) empile des couches de neurones. Chaque neurone caché calcule z = w1·x1 + w2·x2 + b puis applique une activation non linéaire, par exemple ReLU : a = max(0, z). Le neurone de sortie combine ces activations et applique la sigmoïde pour donner p.
+Chaque neurone a ses propres poids et son biais. Ce sont les non-linéarités qui rendent les couches successives utiles : sans elles, l'empilement de couches linéaires reste une seule transformation linéaire.
+Pourquoi n'initialise-t-on pas tous les poids d'un réseau multicouche à zéro ?
+
+=== D003 | explanation | relu
+U: À quoi sert ReLU ?
+A: ReLU (Rectified Linear Unit) vaut ReLU(z) = max(0, z) : elle garde les valeurs positives et ramène les négatives à zéro. Exemple : ReLU(1) = 1 et ReLU(−0,4) = 0.
+Son rôle est d'introduire une non-linéarité. Dans le MLP d'un Transformer, elle permet aussi une lecture intuitive : un neurone dont le score est négatif est « éteint », un neurone positif transmet sa détection à la couche suivante.
+GPT-3 utilise en pratique GELU, une version plus lisse, mais le cours garde ReLU pour rendre le mécanisme visible.
+Que vaut ReLU appliquée au vecteur (2 ; −3 ; 0,5) ?
+
+=== D004 | explanation | entropie_croisee
+U: Explique l'entropie croisée binaire
+A: L'entropie croisée binaire mesure la qualité de la probabilité prédite : L = −[y·ln(p) + (1 − y)·ln(1 − p)].
+Pour un avis positif (y = 1), il reste L = −ln(p). Si le neurone prédit p = 0,5, la perte vaut −ln(0,5) = ln 2 ≈ 0,693. Si p monte à 0,9, elle tombe à 0,105 ; si p descend à 0,1, elle monte à 2,303.
+Sur n avis, on minimise la perte moyenne J = (L1 + … + Ln) / n. La perte punit surtout les erreurs commises avec assurance.
+Que vaut la perte pour un avis négatif (y = 0) prédit avec p = 0,9 ?
+
+=== D005 | calculation | entropie_croisee
+U: calcule la loss pour p=0.8 si l'avis est positif puis négatif
+A: On applique L = −[y·ln(p) + (1 − y)·ln(1 − p)] avec p = 0,8 :
+- avis positif (y = 1) : L = −ln(0,8) ≈ 0,223, une petite perte car la prédiction est bonne ;
+- avis négatif (y = 0) : L = −ln(1 − 0,8) = −ln(0,2) ≈ 1,609, une perte sept fois plus grande, car le modèle s'est trompé avec assurance.
+C'est toute l'idée de cette perte : elle ne regarde que la probabilité attribuée à la bonne réponse, et la pénalité explose quand cette probabilité tend vers zéro.
+Que vaudrait la perte d'un avis positif prédit avec p = 0,001 ?
+
+=== D006 | explanation | regle_chaine
+U: Je comprends pas la règle de la chaîne dans la rétropropagation
+A: L'idée : la perte dépend de w1 à travers une chaîne de calculs w1 → z → p → L. Pour savoir comment L réagit à w1, on multiplie les trois effets locaux :
+∂L/∂w1 = ∂L/∂p × ∂p/∂z × ∂z/∂w1.
+Avec l'exemple du cours (p = 0,5, y = 1, x1 = 1) :
+- ∂L/∂p = −1/p = −2 ;
+- ∂p/∂z = p(1 − p) = 0,25 ;
+- ∂z/∂w1 = x1 = 1.
+Le produit donne −0,5 : augmenter w1 de 0,01 diminue la perte d'environ 0,005.
+Que vaudrait ∂L/∂w2 si x2 = 0 ?
+
+=== D007 | explanation | retropropagation
+U: c'est quoi la rétropropagation
+A: La rétropropagation calcule le gradient de la perte par rapport à tous les paramètres, en partant de la sortie et en remontant vers l'entrée avec la règle de la chaîne.
+Avec la sigmoïde et l'entropie croisée, le signal de sortie se simplifie : ∂L/∂z = p − y. Dans l'exemple du cours, p − y = 0,5 − 1 = −0,5, d'où ∂L/∂w1 = (p − y)·x1 = −0,5, ∂L/∂w2 = 0 car « ennuyeux » est absent, et ∂L/∂b = −0,5.
+Dans un réseau profond, on multiplie le long de chaque chemin et on additionne les contributions des chemins.
+Quelle est la différence entre rétropropagation et descente de gradient ?
+
+=== D008 | comparison | retropropagation_descente
+U: Rétropropagation et descente de gradient c'est la même chose ?
+A: Non, ce sont deux étapes distinctes :
+- la rétropropagation calcule le gradient, c'est-à-dire la sensibilité de la perte à chaque paramètre ;
+- la descente de gradient utilise ce gradient pour modifier les paramètres : θ ← θ − η·∂L/∂θ.
+Le cours le résume ainsi : la rétropropagation calcule le gradient, la descente de gradient modifie les paramètres. Dans PyTorch, ce sont loss.backward() puis optimizer.step().
+À quoi sert optimizer.zero_grad() entre deux itérations ?
+
+=== D009 | calculation | descente_gradient
+U: refais le pas de descente de gradient du cours
+A: On part de w1 = w2 = b = 0, d'un avis positif x = (1, 0) et d'un pas η = 0,2. Le gradient vaut (−0,5 ; 0 ; −0,5) pour (w1, w2, b).
+Mise à jour : w1 = 0 − 0,2 × (−0,5) = 0,1, w2 reste à 0 et b = 0,1.
+On recalcule sur le même avis : z = 0,1 × 1 + 0 × 0 + 0,1 = 0,2, p = σ(0,2) ≈ 0,550 et L = −ln(0,550) ≈ 0,598. La perte est passée de 0,693 à 0,598 : le pas va dans le bon sens.
+Attention, une baisse sur un seul exemple ne démontre pas la généralisation.
+Avec η = 0,4, quelle valeur prendrait w1 après ce premier pas ?
+
+=== D010 | explanation | taux_apprentissage
+U: comment choisir le learning rate ?
+A: Le pas d'apprentissage η règle l'amplitude de chaque correction : θ ← θ − η·∂L/∂θ.
+- trop petit : la perte baisse très lentement ;
+- trop grand : les mises à jour dépassent le minimum, la perte oscille voire diverge ;
+- adapté : la perte baisse régulièrement sur le train et la validation.
+On le choisit en comparant quelques valeurs sur la validation, comme au TP2. Avec des optimiseurs comme AdamW, on utilise souvent des valeurs entre 1e-4 et 1e-3, et parfois un échauffement (warmup) au début.
+Sur une courbe de perte, à quoi reconnais-tu un pas trop grand ?
+
+=== D011 | explanation | batch
+U: Pourquoi on entraîne par mini-batchs ?
+A: Parce qu'on ne calcule pas le gradient sur un seul exemple ni sur tout le corpus :
+- un seul exemple donne un gradient très bruité ;
+- tout le corpus coûte trop cher pour une seule mise à jour.
+Un mini-batch moyenne les pertes de plusieurs séquences, ce qui donne un gradient plus stable, et se calcule en parallèle. Au TP1 Transformers, xb a la forme (B, T) = (4, 8) : 4 séquences indépendantes de 8 tokens.
+Dans un Transformer, chaque séquence fournit en plus T prédictions, toutes moyennées dans la perte.
+Que change le fait de passer B de 4 à 32 ?
+
+=== D012 | explanation | epoque
+U: c'est quoi une époque ?
+A: Une époque est un passage complet sur tout le jeu d'entraînement. Avec 400 exemples et des batchs de 8, une époque correspond à 50 mises à jour des paramètres.
+On entraîne généralement plusieurs époques, en surveillant la perte de validation après chaque époque ou à intervalles réguliers. Quand elle cesse de baisser alors que la perte d'entraînement continue de descendre, le modèle commence à mémoriser : c'est le moment d'arrêter et de garder le meilleur point.
+Combien de mises à jour fait-on en 3 époques avec 240 exemples et des batchs de 8 ?
+
+=== D013 | explanation | surapprentissage
+U: comment on repère le surapprentissage ?
+A: Le surapprentissage se voit sur les courbes : la perte d'entraînement continue de baisser, mais la perte de validation stagne puis remonte. Le modèle mémorise des détails du train qui ne se généralisent pas.
+Les remèdes vus en cours et en TP : arrêter tôt en gardant le meilleur point de validation, régulariser (Ridge, dropout), simplifier le modèle ou ajouter des données variées.
+Avec peu de données, comme pour une adaptation LoRA sur quelques centaines d'exemples, ce risque arrive vite, souvent en quelques époques.
+Pourquoi faut-il sauvegarder le modèle au meilleur point de validation et pas à la fin ?
+
+=== D014 | explanation | rnn
+U: c'est quoi un RNN ?
+A: Un RNN (Recurrent Neural Network) lit une séquence token par token et met à jour un état caché qui résume ce qu'il a déjà lu. À chaque pas, le nouvel état dépend de l'état précédent et du token courant.
+Ses limites, d'après le cours : la lecture est séquentielle, donc difficile à paralléliser, et les liens lointains s'apprennent mal, car l'information doit traverser toute la chaîne.
+LSTM et GRU ajoutent des portes qui contrôlent la mémoire. Au TP2, un GRU caractère par caractère atteignait une perplexité de 4,6 sur Tiny Shakespeare.
+Quelle différence fondamentale avec l'attention, qui regarde tous les tokens précédents directement ?
+
+=== D015 | comparison | lstm_gru
+U: LSTM vs GRU ?
+A: Les deux sont des RNN à portes, conçus pour mieux garder l'information sur de longues séquences :
+- le LSTM (Long Short-Term Memory) a une cellule mémoire et trois portes (entrée, oubli, sortie) ;
+- le GRU (Gated Recurrent Unit) est plus simple, avec deux portes et sans cellule séparée, donc moins de paramètres.
+En pratique, leurs performances sont souvent proches ; le GRU est plus rapide à entraîner. Le cours les présente ensemble comme l'héritage avant les Transformers : utiles quand une mémoire compacte et un traitement en flux comptent.
+Pourquoi les deux restent-ils plus lents à entraîner qu'un Transformer sur GPU ?
+
+=== D016 | explanation | pourquoi_transformers
+U: Pourquoi les Transformers ont remplacé les RNN ?
+A: Surtout pour la parallélisation. Un RNN doit lire le token 1, puis le token 2, puis le 3 : le calcul est séquentiel. L'attention traite toutes les positions d'une séquence en même temps, ce qui exploite pleinement les GPU.
+Le cours donne l'ordre de grandeur : entraîner GPT-3 demande environ 3,14 × 10^23 opérations, soit environ 10 millions d'années à 10^9 opérations par seconde sur une seule unité de calcul. Sans parallélisation, c'est impossible.
+L'attention relie aussi directement deux tokens éloignés, sans faire transiter l'information par tous les états intermédiaires.
+Qu'est-ce qui empêche quand même un Transformer de regarder le futur pendant l'entraînement ?
+
+=== D017 | quiz | entropie_croisee
+U: pose moi une question sur la loss
+A: Question : un modèle attribue une probabilité de 0,10 au bon token. Quelle est sa perte, et que devient-elle si cette probabilité passe à 0,90 ?
+U: 2,3 puis 0,1 environ
+A: Exact : −ln(0,10) ≈ 2,30 et −ln(0,90) ≈ 0,105, que le cours arrondit à 0,11. La perte est divisée par plus de 20 quand la bonne réponse devient probable.
+C'est le tableau du cours sur −log(p) : une probabilité de 0,001 coûterait 6,91. Minimiser la perte revient à rendre le token réellement observé plus probable.
+Question suivante : à quelle perte s'attend-on au début de l'entraînement, si le modèle prédit uniformément parmi 65 caractères ?
+
+=== D018 | quiz | descente_gradient
+U: interroge moi sur la descente de gradient
+A: Question : un paramètre vaut θ = 1, le gradient de la perte vaut ∂L/∂θ = 4 et le pas est η = 0,1. Quelle est la nouvelle valeur de θ ?
+U: 1 + 0,1*4 = 1,4
+A: Pas tout à fait : on va dans la direction opposée au gradient. La règle est θ ← θ − η·∂L/∂θ = 1 − 0,1 × 4 = 0,6.
+Un gradient positif signifie que la perte augmente quand θ augmente : pour la faire baisser, il faut donc diminuer θ. Le signe du gradient donne la direction, η règle l'amplitude du pas.
+Refais le calcul avec un gradient de −2 : que vaut le nouveau θ ?
+
+=== D019 | quiz | relu
+U: question rapide sur les fonctions d'activation ?
+A: Question : un neurone d'un MLP calcule z = −0,7. Que vaut sa sortie avec ReLU, puis avec la sigmoïde ?
+U: relu donne 0 et sigmoide environ 0,33
+A: C'est juste : ReLU(−0,7) = max(0 ; −0,7) = 0, le neurone est éteint. σ(−0,7) = 1 / (1 + e^0,7) ≈ 1 / 3,01 ≈ 0,33.
+Note la différence : ReLU coupe complètement les scores négatifs, alors que la sigmoïde les écrase dans l'intervalle (0, 1) sans jamais atteindre zéro.
+Pourquoi utilise-t-on la sigmoïde en sortie d'un classifieur binaire plutôt que ReLU ?
+
+=== D020 | explanation | gradient
+U: le gradient c'est quoi concrètement ?
+A: Le gradient est le vecteur des dérivées partielles de la perte par rapport à chaque paramètre. Chaque composante dit comment la perte varierait si l'on modifiait très légèrement ce paramètre, les autres restant fixes.
+Dans l'exemple du cours, ∇L = (−0,5 ; 0 ; −0,5) pour (w1, w2, b) : augmenter w1 ou b ferait baisser la perte, et w2 n'a aucun effet sur cet avis car « ennuyeux » est absent.
+Le gradient indique la direction de plus forte montée de la perte ; on se déplace donc dans la direction opposée.
+Que signifie un gradient nul pour un paramètre ?
+
+=== D021 | explanation | adamw
+U: Pourquoi on utilise AdamW et pas une simple descente de gradient ?
+A: AdamW reste une descente de gradient, mais avec un pas adapté à chaque paramètre. Il garde une moyenne glissante des gradients (une sorte d'inertie) et de leur carré, ce qui normalise l'amplitude des mises à jour : les paramètres aux gradients bruités ou très petits avancent de façon plus régulière.
+Le « W » désigne une décroissance des poids (weight decay) appliquée séparément, qui joue un rôle de régularisation.
+C'est l'optimiseur utilisé dans les TP Transformers, avec lr = 1e-3. Ce détail dépasse un peu le cours, qui présente surtout la règle de base θ ← θ − η·∂L/∂θ.
+Quelle quantité AdamW doit-il stocker en plus pour chaque paramètre, et pourquoi cela compte-t-il en mémoire ?
+
+=== D022 | explanation | boucle_entrainement
+U: Résume moi la boucle d'entraînement
+A: Le cours la décrit en six étapes répétées :
+1. charger un batch de séquences ;
+2. prédire tous les tokens suivants (passage avant) ;
+3. calculer la perte en comparant aux vraies cibles ;
+4. rétropropager pour obtenir les gradients ;
+5. actualiser les poids avec une petite correction ;
+6. passer au batch suivant.
+En PyTorch : logits, loss = model(xb, yb), puis optimizer.zero_grad(), loss.backward() et optimizer.step(). Une mise à jour change à peine le modèle : c'est la répétition qui fait l'apprentissage.
+Pourquoi évalue-t-on la perte de validation sous torch.no_grad() ?
+
+=== D023 | explanation | initialisation
+U: pourquoi les poids sont initialisés aléatoirement ?
+A: Pour casser la symétrie. Si tous les neurones d'une couche démarraient avec les mêmes poids, ils calculeraient la même chose, recevraient le même gradient et resteraient identiques pendant tout l'entraînement : la couche se comporterait comme un seul neurone.
+Le cours montre des matrices initiales de petites valeurs essentiellement aléatoires, de l'ordre de 0,01. Petites, pour que les activations et les gradients restent dans une zone raisonnable au départ.
+Le cas du neurone unique du cours, initialisé à zéro, fonctionne car il n'y a pas de symétrie à casser.
+Avant tout entraînement, à quoi ressemble le texte généré par un modèle aux poids aléatoires ?
+
+=== D024 | quiz | retropropagation
+U: Teste moi sur la rétropropagation
+A: Question : pour un neurone sigmoïde avec entropie croisée, on a p = 0,8 pour un avis négatif (y = 0) et x = (1, 1). Que vaut ∂L/∂w1 avec la formule simplifiée du cours ?
+U: dL/dz = p - y = 0,8 donc dL/dw1 = 0,8
+A: Exact : ∂L/∂z = p − y = 0,8 − 0 = 0,8, puis ∂L/∂w1 = (p − y)·x1 = 0,8 × 1 = 0,8.
+Le gradient est positif : pour réduire la perte, la descente de gradient va diminuer w1, ce qui baissera la probabilité « positif » pour cet avis négatif. C'est le comportement attendu.
+Et que vaut ∂L/∂b dans ce même cas ?
+
+=== D025 | explanation | courbes_perte
+U: comment lire des courbes de loss train et validation ?
+A: On trace les deux pertes au fil des itérations :
+- les deux baissent : le modèle apprend et généralise ;
+- le train baisse, la validation stagne ou remonte : surapprentissage, il faut arrêter ou régulariser ;
+- les deux restent hautes : sous-apprentissage, le modèle ou l'entraînement sont insuffisants ;
+- les courbes oscillent fortement : pas d'apprentissage souvent trop grand.
+On retient le point où la validation est la plus basse. C'est ce que demande le TP2 : tracer la perte sur apprentissage et validation, et étudier l'effet du pas.
+Pourquoi la perte de validation peut-elle être plus basse que celle d'entraînement au tout début, avec du dropout ?
+
+=== D026 | explanation | dropout
+U: le dropout ça sert à quoi ?
+A: Le dropout éteint aléatoirement une partie des activations pendant l'entraînement, par exemple 5 % ou 10 %. Le réseau ne peut plus compter sur un neurone précis et doit répartir l'information, ce qui limite la mémorisation et donc le surapprentissage.
+Il n'est actif qu'en mode entraînement : model.eval() le désactive pour la validation et la génération. C'est pour ça qu'il faut bien basculer entre model.train() et model.eval().
+On le retrouve dans les adaptateurs LoRA sous le nom lora_dropout. Ce mécanisme n'est pas détaillé dans le cours, qui parle surtout de régularisation par pénalité.
+Que se passerait-il si on oubliait model.eval() avant de générer du texte ?
+
+=== D027 | calculation | regle_chaine
+U: Calcule ∂L/∂w1 pour p=0,2, y=1, x1=2
+A: On multiplie les trois effets locaux de la chaîne w1 → z → p → L :
+- ∂L/∂p = −1/p = −1/0,2 = −5 ;
+- ∂p/∂z = p(1 − p) = 0,2 × 0,8 = 0,16 ;
+- ∂z/∂w1 = x1 = 2.
+Produit : −5 × 0,16 × 2 = −1,6. On retrouve la formule simplifiée : (p − y)·x1 = (0,2 − 1) × 2 = −1,6.
+Le gradient est fortement négatif : le modèle se trompe nettement sur un avis positif, la descente de gradient va donc augmenter w1 franchement.
+Avec un pas η = 0,1, de combien w1 augmente-t-il ?
+
+=== D028 | explanation | parametres_vs_hyperparametres
+U: quelle différence entre paramètre et hyperparamètre ?
+A: Les paramètres sont appris par l'entraînement : poids, biais, embeddings, matrices d'attention. Les hyperparamètres sont fixés avant l'entraînement et ne sont pas appris par la descente de gradient : pas d'apprentissage, taille des batchs, nombre d'époques, nombre de couches, rang LoRA, seuil de décision.
+Les hyperparamètres se choisissent en comparant plusieurs valeurs sur la validation, jamais sur le test.
+Pour une adaptation LoRA, le rang r est-il un paramètre ou un hyperparamètre ?

@@ -1,0 +1,341 @@
+# Dialogues : modèles classiques (classification, régression, clustering, réduction) et métriques.
+
+=== M001 | explanation | regression_logistique
+U: Comment marche la régression logistique ?
+A: La régression logistique calcule un score linéaire z = w1·x1 + w2·x2 + b, puis le transforme en probabilité avec la sigmoïde : p = 1 / (1 + e^(−z)).
+Exemple du cours : x = (1, 0) pour « excellent » présent et « ennuyeux » absent, w = (1, −1), b = 0. On obtient z = 1 et p = σ(1) ≈ 0,73. Avec un seuil de 0,5, l'avis est classé positif.
+Malgré son nom, c'est un modèle de classification. Sa frontière de décision est linéaire, ce qui la rend lisible : chaque poids dit si un mot pousse vers positif ou négatif.
+Que vaudrait p pour l'avis x = (0, 1) avec les mêmes poids ?
+
+=== M002 | calculation | sigmoide
+U: Calcule σ(−1) et σ(2) stp
+A: La sigmoïde vaut σ(z) = 1 / (1 + e^(−z)).
+- σ(−1) = 1 / (1 + e^1) = 1 / (1 + 2,718) ≈ 0,269 ;
+- σ(2) = 1 / (1 + e^(−2)) = 1 / (1 + 0,135) ≈ 0,881.
+On remarque que σ(−z) = 1 − σ(z) : σ(1) ≈ 0,731 et σ(−1) ≈ 0,269. La sigmoïde vaut exactement 0,5 en z = 0, c'est pourquoi un seuil de 0,5 sur p revient à un seuil de 0 sur le score z.
+Avec un seuil de décision à 0,5, quelle classe donnerait un score z = −1 ?
+
+=== M003 | explanation | naive_bayes
+U: explique naive bayes simplement
+A: Naive Bayes se demande quel sentiment explique le mieux les mots observés. Il multiplie la probabilité de la classe par la probabilité de chaque mot dans cette classe.
+Exemple du cours, pour x = (1, 0) (« excellent » présent) :
+- score positif : 0,5 × 0,8 = 0,4 ;
+- score négatif : 0,5 × 0,2 = 0,1 ;
+- après normalisation, p(positif) = 0,4 / (0,4 + 0,1) = 0,8.
+L'hypothèse « naïve » est de traiter les mots comme indépendants une fois la classe connue. C'est faux en général, mais le calcul devient très rapide, ce qui en fait une excellente baseline.
+À quoi sert le lissage dans ce modèle ?
+
+=== M004 | explanation | lissage
+U: Pourquoi faut il lisser dans naive bayes ?
+A: Parce que Naive Bayes multiplie les probabilités des mots. Si un mot n'a jamais été vu dans une classe pendant l'entraînement, sa probabilité estimée vaut 0, et tout le produit devient nul, quels que soient les autres mots de l'avis.
+Le lissage (par exemple ajouter 1 à tous les comptages, le lissage de Laplace) donne une petite probabilité non nulle à chaque mot. Un seul mot inconnu ne peut alors plus annuler tout le score.
+Imagine un avis très positif qui contient un seul mot jamais vu dans les avis positifs du train : que prédirait un Naive Bayes sans lissage ?
+
+=== M005 | comparison | nb_vs_logreg
+U: Naive Bayes ou régression logistique, lequel choisir ?
+A: Les deux sont de bonnes baselines linéaires, avec des forces différentes :
+- Naive Bayes est très rapide et marche bien avec peu de données, mais suppose les mots indépendants sachant la classe ;
+- la régression logistique apprend directement la frontière de décision, gère mieux les mots corrélés et donne des scores probabilistes souvent mieux calibrés.
+Sur Allociné, au TP1, TF-IDF + régression logistique atteignait 0,934 de F1 macro contre 0,892 pour comptages + Naive Bayes. Le bon réflexe reste de comparer les deux sur la même validation.
+Pourquoi la corrélation entre « très » et « bon » gêne-t-elle Naive Bayes ?
+
+=== M006 | explanation | svm
+U: Le SVM c'est quoi ?
+A: Le SVM (Support Vector Machine) cherche une frontière qui sépare les classes en restant le plus loin possible des exemples les plus proches. Cette distance s'appelle la marge, et les exemples qui la touchent sont les vecteurs de support.
+Dans l'exemple du cours, la frontière x1 = x2 sépare « excellent » et « ennuyeux » : pour x = (1, 0), z = x1 − x2 = 1, donc l'avis est positif.
+Le paramètre C règle le compromis entre une grande marge et peu d'erreurs. Attention, le score d'un SVM n'est pas directement une probabilité.
+Un C très grand favorise-t-il plutôt la marge ou l'absence d'erreurs sur le train ?
+
+=== M007 | explanation | arbre_decision
+U: Comment un arbre de décision classe un avis ?
+A: Un arbre pose une suite de questions sur les caractéristiques. Exemple du cours : « x1 > 0 ? », c'est-à-dire « excellent » est-il présent ? Si oui, feuille positive ; sinon, on teste « ennuyeux », et ainsi de suite jusqu'à une feuille.
+Chaque seuil est choisi pour rendre les groupes d'avis plus homogènes. L'atout est la lisibilité : une décision se lit comme une suite de règles. La limite : un arbre trop profond mémorise le train.
+On limite donc la profondeur ou on exige un nombre minimal d'exemples par feuille.
+Que devrait-on observer sur la validation si l'arbre est trop profond ?
+
+=== M008 | explanation | foret_aleatoire
+U: et la forêt aléatoire ?
+A: Une forêt aléatoire combine plusieurs arbres entraînés différemment : chaque arbre apprend sur un tirage des données avec remise, et à chaque séparation il ne regarde qu'un sous-ensemble aléatoire des caractéristiques.
+Pour prédire, on moyenne les arbres. Dans le cours, trois arbres donnent 0,9, 0,6 et 0,3, d'où p = (0,9 + 0,6 + 0,3) / 3 = 0,6 : l'avis est positif.
+La diversité des arbres réduit l'instabilité d'un arbre seul. En échange, le modèle devient moins interprétable.
+Pourquoi des arbres tous identiques n'apporteraient-ils rien à la moyenne ?
+
+=== M009 | explanation | knn
+U: Comment marche k-NN ?
+A: Le k-NN (k plus proches voisins) ne construit pas de modèle à l'avance : pour classer un avis, il cherche les k avis d'entraînement les plus proches et prend la classe majoritaire.
+Dans le cours, avec k = 3, les voisins de x = (1, 0) sont (1, 0) à distance 0, (2, 0) à distance 1 et (0, 1) à distance √2. Deux voisins sur trois sont positifs, donc l'avis est positif.
+Peu de calcul à l'apprentissage, mais une recherche de voisins à chaque prédiction. Et il faut valider la distance : deux textes proches lexicalement n'ont pas toujours le même sentiment.
+Quel risque prend-on avec k = 1 ?
+
+=== M010 | explanation | matrice_confusion
+U: c'est quoi une matrice de confusion
+A: C'est le tableau qui croise la classe réelle et la classe prédite. Avec « avis positif » comme classe positive, on obtient quatre cases :
+- vrais positifs (VP) : positifs reconnus ;
+- faux positifs (FP) : négatifs classés positifs à tort ;
+- faux négatifs (FN) : positifs classés négatifs à tort ;
+- vrais négatifs (VN) : négatifs reconnus.
+Toutes les métriques (exactitude, précision, rappel, F1) se calculent à partir de ces quatre nombres. Et le coût réel d'un faux positif peut être très différent de celui d'un faux négatif.
+Dans un filtre anti-spam, quelle erreur te semble la plus grave ?
+
+=== M011 | calculation | metriques
+U: Calcule précision rappel et F1 avec VP=40 FN=20 FP=10 VN=30
+A: Avec ces valeurs (l'exemple du cours) :
+- exactitude = (VP + VN) / total = 70 / 100 = 70 % ;
+- précision = VP / (VP + FP) = 40 / 50 = 80 % ;
+- rappel = VP / (VP + FN) = 40 / 60 ≈ 66,7 % ;
+- F1 = 2VP / (2VP + FP + FN) = 80 / 110 ≈ 72,7 %.
+La précision répond à « parmi les positifs prédits, combien sont vrais ? », le rappel à « parmi les vrais positifs, combien sont trouvés ? ». Le F1 est leur moyenne harmonique.
+Si on baisse le seuil de décision, lequel des deux augmente en général ?
+
+=== M012 | comparison | precision_rappel
+U: Je confonds toujours précision et rappel
+A: Garde les deux questions en tête :
+- précision = VP / (VP + FP) : quand le modèle dit « positif », a-t-il raison ? Elle chute avec les fausses alertes ;
+- rappel = VP / (VP + FN) : parmi tous les vrais positifs, combien en a-t-il trouvé ? Il chute avec les oublis.
+Un moyen mnémotechnique : la précision regarde la colonne « prédit positif », le rappel regarde la ligne « réel positif » de la matrice de confusion.
+Un modèle qui prédit « positif » pour tous les avis a-t-il un bon rappel ou une bonne précision ?
+
+=== M013 | explanation | f1
+U: Pourquoi le F1 utilise une moyenne harmonique ?
+A: Parce que la moyenne harmonique punit les déséquilibres. Avec une précision de 100 % et un rappel de 2 %, la moyenne arithmétique donnerait 51 %, ce qui paraît correct, alors que le modèle ne trouve presque rien. La moyenne harmonique donne environ 3,9 %.
+Le F1 vaut 2PR / (P + R), ou de façon équivalente 2VP / (2VP + FP + FN). Il n'est élevé que si la précision et le rappel le sont tous les deux.
+En multiclasse, il faut préciser l'agrégation : micro, macro ou pondérée.
+Quelle agrégation donne le même poids à une classe rare et à une classe fréquente ?
+
+=== M014 | explanation | f1_macro
+U: F1 macro c'est quoi par rapport au F1 micro ?
+A: Le F1 macro calcule le F1 de chaque classe, puis fait la moyenne simple : chaque classe compte autant, même si elle est rare. Le F1 micro additionne d'abord les VP, FP et FN de toutes les classes, puis calcule un seul F1 : les classes fréquentes dominent.
+Sur des données déséquilibrées, un modèle qui ignore une classe rare peut avoir un bon F1 micro et un mauvais F1 macro. C'est pour ça que le cours recommande de lire les métriques par classe et le F1 macro.
+Dans une classification binaire équilibrée comme Allociné, les deux seraient-ils très différents ?
+
+=== M015 | explanation | exactitude_piege
+U: Pourquoi l'accuracy peut être trompeuse ?
+A: Parce qu'elle ignore la répartition des classes. Le scénario du cours : 1 000 avis dont seulement 10 positifs. Un modèle qui répond toujours « négatif » obtient 990 / 1 000 = 99 % d'exactitude, mais un rappel positif de 0 / 10 = 0 %.
+Le chiffre global cache l'échec précis que le système devait éviter. Au TP3, on a vu l'équivalent sur un jeu équilibré : un modèle constant obtenait exactement 0,500.
+Il faut donc toujours regarder la matrice de confusion et les métriques par classe.
+Quelle exactitude obtiendrait ce même modèle constant sur un jeu de test avec 50 % de positifs ?
+
+=== M016 | explanation | seuil_decision
+U: Comment le seuil de décision change les résultats ?
+A: Un classifieur produit souvent un score continu, et le seuil le transforme en décision.
+- seuil bas : davantage de prédictions positives, le rappel monte, mais les faux positifs aussi, donc la précision baisse souvent ;
+- seuil haut : moins de prédictions positives, la précision monte souvent, le rappel baisse.
+Le bon seuil dépend du coût réel des deux types d'erreurs, et il se choisit sur la validation, jamais sur le test.
+Pour mettre en avant uniquement des avis positifs très fiables sur un site, choisirais-tu un seuil haut ou bas ?
+
+=== M017 | explanation | roc_auc
+U: courbe ROC et AUC ?
+A: La courbe ROC trace, pour chaque seuil possible, le taux de vrais positifs (le rappel, VP / (VP + FN)) en fonction du taux de faux positifs (FP / (FP + VN)). Chaque point correspond à un seuil.
+L'AUC est l'aire sous cette courbe : 0,5 correspond à un classement aléatoire, 1 à un classement parfait. Elle mesure à quel point les positifs sont classés devant les négatifs, indépendamment du seuil.
+Sur des classes très déséquilibrées, le cours conseille de la compléter par la courbe précision-rappel, centrée sur la classe positive.
+Que représente le point (0, 0) de la courbe ROC ?
+
+=== M018 | explanation | classe_rare
+U: Comment on gère une classe rare ?
+A: Le cours propose trois réglages :
+- rééchantillonner : montrer plus souvent les exemples rares, ou moins souvent les fréquents, uniquement dans le pli d'apprentissage ;
+- pondérer la perte : multiplier la perte des exemples rares, par exemple 0,7 × 5 = 3,5 ;
+- choisir le seuil : déclarer positif dès que p dépasse un seuil validé, plus bas que 0,5.
+Les deux premiers changent l'apprentissage, le troisième change seulement la décision. Des poids trop forts multiplient les fausses alertes.
+Pourquoi ne faut-il jamais rééchantillonner le jeu de test ?
+
+=== M019 | explanation | regression_lineaire
+U: Explique la régression linéaire avec l'exemple des notes
+A: La régression linéaire prédit un nombre en additionnant une valeur de départ et la contribution de chaque caractéristique : ŷ = w1·x1 + w2·x2 + b.
+Exemple du cours : pour « Ce film est excellent », x = (1, 0), avec w1 = 1, w2 = −1 et b = 3. On obtient ŷ = 1 × 1 + (−1) × 0 + 3 = 4 sur 5, pour une note réelle de 4,5 : l'écart est de 0,5.
+Contrairement à la classification, la sortie est continue. Une limite : un modèle linéaire peut sortir de l'intervalle des notes, par exemple prédire 6 sur 5.
+Quelle note prédirait ce modèle pour un avis contenant deux fois « ennuyeux » ?
+
+=== M020 | explanation | ridge_lasso
+U: Différence Ridge Lasso Elastic Net
+A: Les trois ajoutent une pénalité sur les poids à l'erreur quadratique moyenne, réglée par λ ≥ 0 :
+- Ridge pénalise la somme des w_j² : il réduit l'amplitude des poids sans les annuler ;
+- Lasso pénalise la somme des |w_j| : il peut annuler certains poids, donc sélectionner des mots ;
+- Elastic Net mélange les deux.
+Le but est d'éviter que des poids extrêmes mémorisent les notes du train. λ se choisit sur la validation, après avoir mis les caractéristiques à des échelles comparables, et le biais n'est généralement pas pénalisé.
+Que se passe-t-il quand λ devient très grand ?
+
+=== M021 | calculation | mae_mse
+U: Calcule MAE et MSE pour y=(4.5, 2, 1.5) et prédictions (4, 3, 2)
+A: Les écarts absolus sont 0,5, 1 et 0,5.
+- MAE = (0,5 + 1 + 0,5) / 3 ≈ 0,67 point de note ;
+- MSE = (0,5² + 1² + 0,5²) / 3 = (0,25 + 1 + 0,25) / 3 = 0,50.
+La MSE élève les écarts au carré : le gros écart de 1 point pèse quatre fois plus que chaque écart de 0,5. C'est exactement l'exemple du cours, où le R² vaut environ 0,71.
+Si une seule prédiction était fausse de 3 points, laquelle des deux métriques augmenterait le plus ?
+
+=== M022 | explanation | r2
+U: Comment interpréter le R² ?
+A: R² = 1 − Σ(y_i − ŷ_i)² / Σ(y_i − ȳ)², où ȳ est la moyenne des cibles évaluées. Il compare ton modèle à un modèle naïf qui prédirait toujours la moyenne.
+- R² = 1 : prédictions parfaites ;
+- R² = 0 : même erreur que la moyenne ;
+- R² négatif : pire que la moyenne.
+Dans l'exemple du cours, R² ≈ 0,71 : le modèle explique une bonne partie de la variation des notes. La formule suppose des cibles non constantes, sinon le dénominateur est nul.
+Un R² négatif sur le test, que t'apprend-il sur ton modèle ?
+
+=== M023 | explanation | kmeans
+U: K-means ça marche comment ?
+A: K-means regroupe les données en K groupes fixés à l'avance, en répétant deux étapes jusqu'à stabilisation :
+1. affecter chaque point au centre le plus proche ;
+2. recentrer chaque groupe sur la moyenne de ses points. Dans le cours, le centre de (1, 2) et (3, 2) est (2, 2).
+L'algorithme favorise des groupes compacts. Comme le résultat dépend de l'initialisation et de K, il faut essayer plusieurs valeurs de K et plusieurs initialisations. Ensuite, on lit les avis de chaque groupe pour le nommer.
+Pourquoi K-means seul ne peut-il pas te dire qu'un groupe correspond au thème « musique » ?
+
+=== M024 | explanation | clustering_hierarchique
+U: Le clustering hiérarchique c'est quoi ?
+A: Dans sa version agglomérative, on part d'un groupe par avis, puis on fusionne à chaque étape les deux groupes les plus proches, jusqu'à n'en avoir plus qu'un.
+Le dendrogramme raconte l'histoire de ces fusions. En le coupant à une certaine hauteur, on choisit le nombre de groupes : dans le cours, la coupe donne trois groupes (scénario, interprétation, musique).
+La distance entre deux groupes dépend de la règle de liaison choisie. L'avantage sur K-means est qu'on n'a pas besoin de fixer le nombre de groupes à l'avance.
+Que se passe-t-il si tu déplaces la coupe plus bas dans le dendrogramme ?
+
+=== M025 | explanation | dbscan
+U: c'est quoi dbscan
+A: DBSCAN regroupe les points selon la densité locale. Deux paramètres :
+- ε : le rayon du voisinage ;
+- min_samples : le nombre minimal de points dans ce rayon, le point lui-même compris, pour être un point central.
+Les voisinages denses reliés forment des groupes, et un point isolé peut rester classé comme bruit. On n'a pas à fixer le nombre de groupes, et les groupes peuvent avoir des formes quelconques.
+La difficulté : le réglage de ε quand les groupes ont des densités différentes.
+Quel avantage a DBSCAN pour repérer des avis atypiques ?
+
+=== M026 | explanation | pca_svd
+U: PCA et SVD c'est pareil ?
+A: Presque. Les deux réduisent la dimension en gardant des directions principales.
+- la PCA centre les données et conserve les directions de plus grande variance ;
+- la SVD tronquée réduit directement une matrice de texte creuse sans la centrer, ce qui est pratique pour du TF-IDF. Les vecteurs obtenus sont denses.
+Dans les deux cas, on apprend la transformation sur le train et on peut projeter de nouveaux avis. Mais une grande variance ne garantit pas une information utile pour le sentiment : au TP2, la SVD ne gardait que 18 % de la variance.
+Pourquoi centrer une matrice TF-IDF creuse poserait-il un problème de mémoire ?
+
+=== M027 | explanation | tsne
+U: Est-ce que je peux conclure quelque chose d'une carte t-SNE ?
+A: Avec prudence. t-SNE cherche surtout à conserver les voisinages locaux : deux avis proches sur la carte étaient probablement proches dans l'espace de départ. Elle sert bien à explorer les voisins, les doublons et les exemples atypiques.
+En revanche, l'écart entre les amas, leur taille et la direction des axes ne s'interprètent pas. Changer le réglage de perplexité, qui fixe l'échelle du voisinage, peut changer la carte.
+Une carte aide à explorer le corpus, elle ne démontre pas à elle seule l'existence de classes.
+Que ferais-tu pour vérifier qu'un amas visible correspond vraiment à un thème ?
+
+=== M028 | comparison | classification_regression
+U: quelle est la différence entre classification et régression ?
+A: C'est le type de cible qui change :
+- en classification, on prédit une étiquette, par exemple positif ou négatif ; métriques : exactitude, précision, rappel, F1 ;
+- en régression, on prédit un nombre, par exemple une note sur cinq ; métriques : MAE, MSE, R².
+Plusieurs familles savent faire les deux : arbres, forêts et k-NN ont une version de régression, où l'on moyenne des valeurs au lieu de voter.
+Attention au nom trompeur : la régression logistique est un modèle de classification.
+Prédire le nombre d'étoiles (1 à 5) d'un avis : tu le traiterais comme une classification ou une régression ?
+
+=== M029 | explanation | biais_variance
+U: Comment je sais si mon modèle est trop simple ou trop complexe ?
+A: En comparant les erreurs d'apprentissage et de validation :
+- trop simple : les deux erreurs restent élevées, le modèle ne capture pas le signal (sous-apprentissage) ;
+- trop complexe : l'erreur d'apprentissage continue de baisser mais celle de validation se dégrade (sur-apprentissage) ;
+- adapté : la validation est au plus bas.
+C'est la courbe du cours : on retient le réglage validé, on réentraîne, puis on mesure une seule fois sur le test.
+Sur une courbe de perte, quel signe t'indique qu'il faut arrêter l'entraînement ?
+
+=== M030 | explanation | baseline
+U: Pourquoi faire une baseline simple avant un gros modèle ?
+A: Parce qu'un score n'a de sens que comparé à une référence. Le cours en fait une bonne pratique : établir d'abord une baseline simple, puis n'ajouter de complexité que si le gain mesuré la justifie.
+La baseline donne un plancher : si un modèle profond ne la bat pas nettement, soit la tâche est surtout lexicale, soit son entraînement pose problème. Il existe même une référence triviale : prédire toujours la classe majoritaire.
+Au TP2, le perceptron multicouche faisait moins bien que la régression logistique du TP1.
+Quelle référence triviale utiliserais-tu pour une tâche de régression de notes ?
+
+=== M031 | quiz | metriques
+U: pose moi une question sur les métriques
+A: Question : un modèle de détection d'avis positifs a VP = 30, FP = 30, FN = 10 et VN = 30. Quels sont sa précision et son rappel ?
+U: précision 30/60 = 50% et rappel 30/40 = 75%
+A: Parfait, les deux sont justes. Précision = 30 / (30 + 30) = 50 % : une prédiction positive sur deux est fausse. Rappel = 30 / (30 + 10) = 75 % : le modèle trouve trois positifs sur quatre.
+Ce modèle fait donc beaucoup de fausses alertes mais oublie peu de positifs, ce qui suggère un seuil plutôt bas.
+Pour aller plus loin : quel est son F1 ?
+
+=== M032 | quiz | metriques
+U: Quiz sur le F1 stp
+A: Question : la précision vaut 80 % et le rappel 40 %. Que vaut le F1 ?
+U: 60% ?
+A: Pas tout à fait : 60 % est la moyenne arithmétique. Le F1 est la moyenne harmonique : F1 = 2PR / (P + R) = 2 × 0,8 × 0,4 / (0,8 + 0,4) = 0,64 / 1,2 ≈ 53,3 %.
+La moyenne harmonique tire le résultat vers la plus petite des deux valeurs : un rappel faible pénalise fortement le F1, même avec une bonne précision.
+Essaie avec P = 90 % et R = 10 % : que trouves-tu ?
+
+=== M033 | quiz | regression_logistique
+U: interroge moi sur la régression logistique
+A: Question : avec w = (2, −1), b = −1 et l'avis x = (1, 1), que vaut le score z, et l'avis est-il classé positif avec un seuil de 0,5 sur la probabilité ?
+U: z = 2 - 1 - 1 = 0 donc p = 0,5 donc positif
+A: Le calcul est juste : z = 2 × 1 + (−1) × 1 − 1 = 0, donc p = σ(0) = 0,5. Pour la décision, tout dépend de la convention : avec la règle du cours « ŷ = 1 si p ≥ 0,5 », l'avis est bien classé positif, mais il est exactement sur la frontière.
+Ce genre de cas limite montre qu'une probabilité de 0,5 n'exprime aucune confiance.
+Quel changement du biais b ferait basculer cet avis clairement du côté négatif ?
+
+=== M034 | quiz | exactitude_piege
+U: Teste moi sur les classes déséquilibrées
+A: Question : sur 1 000 avis dont 50 positifs, un modèle prédit toujours « négatif ». Quelles sont son exactitude et son rappel sur la classe positive ?
+U: accuracy 95% et rappel 0
+A: Exact. Exactitude = 950 / 1 000 = 95 %, et rappel positif = 0 / 50 = 0 %. Le modèle ne trouve aucun avis positif tout en affichant un score global flatteur.
+C'est le piège décrit dans le cours : il faut regarder la matrice de confusion et les métriques par classe, ou le F1 macro.
+Et que vaudrait la précision de la classe positive pour ce modèle ?
+
+=== M035 | comparison | kmeans_dbscan
+U: K-means vs DBSCAN ?
+A: Les deux regroupent des données sans étiquette, mais avec des hypothèses différentes :
+- K-means demande le nombre de groupes K, favorise des groupes compacts et ronds, et affecte chaque point à un groupe ;
+- DBSCAN demande un rayon ε et un nombre minimal de voisins, trouve des groupes de forme quelconque et peut laisser des points isolés comme bruit.
+DBSCAN est donc pratique pour repérer des avis atypiques, mais difficile à régler quand les densités varient.
+Si tu ne connais pas le nombre de thèmes de ton corpus, lequel essaierais-tu en premier ?
+
+=== M036 | explanation | modele_adapte_probleme
+U: comment choisir un modèle de classification de texte ?
+A: Le choix dépend de la représentation, du volume de données, du coût de calcul, de l'explicabilité attendue et du type de sortie. Le cours résume :
+- Naive Bayes sur sac de mots : très rapide, excellente baseline ;
+- régression logistique sur TF-IDF : linéaire, lisible, probabiliste ;
+- arbres et boosting : non-linéarités, moins naturels sur d'immenses vecteurs creux ;
+- réseaux et Transformers : contexte et transfert, mais calcul et mise au point plus lourds.
+Commence par une baseline simple et n'ajoute de la complexité que si le gain mesuré la justifie.
+Pour 200 000 avis à classer chaque jour avec peu de latence, vers quel modèle irais-tu ?
+
+=== M037 | explanation | erreurs_analyse
+U: Pourquoi le prof insiste pour qu'on analyse des erreurs à la main ?
+A: Parce qu'un score résume, mais n'explique pas. Lire des erreurs concrètes permet de comprendre ce que le modèle n'a pas appris : une négation mal gérée, une ironie, un avis ambigu, une étiquette fausse dans les données.
+Le cours le demande à chaque TP : regarder cinq erreurs, en plus des métriques par classe et de la matrice de confusion. Au TP3, c'est la lecture des sorties qui a révélé qu'un modèle répondait « négatif » à tous les avis.
+Quelle erreur typique t'attendrais-tu à trouver dans un classifieur de sentiment basé sur un sac de mots ?
+
+=== M038 | explanation | protocole_comparaison
+U: Comment comparer proprement deux modèles ?
+A: Le cours donne un protocole en deux parties :
+- même expérience : mêmes partitions, mêmes étiquettes, vocabulaire appris sur le train, seuil et paramètres choisis sur la validation, doublons séparés avec soin ;
+- même lecture : matrice de confusion, précision, rappel et F1 par classe, F1 macro, temps de prédiction et erreurs concrètes.
+Le test final doit aussi garder la distribution visée : un bon score sur un test artificiellement équilibré ne décrit pas forcément l'usage réel.
+Pourquoi le temps de prédiction fait-il partie de la comparaison ?
+
+=== M039 | calculation | knn
+U: fais moi un exemple de knn avec k=3
+A: Prenons le train du cours : (1, 0) positif, (2, 0) positif, (0, 1) négatif, (0, 2) négatif, et un nouvel avis x = (0, 1).
+Distances euclidiennes à x :
+- (0, 1) : 0 ;
+- (0, 2) : 1 ;
+- (1, 0) : √2 ≈ 1,41 ;
+- (2, 0) : √5 ≈ 2,24.
+Les trois plus proches voisins sont (0, 1), (0, 2) et (1, 0) : deux négatifs et un positif. Le vote majoritaire donne « négatif ».
+Avec k = 4, que se passerait-il, et pourquoi préfère-t-on souvent un k impair en binaire ?
+
+=== M040 | explanation | reduction_dimension
+U: à quoi sert la réduction de dimension ?
+A: Elle produit moins de coordonnées à partir de vecteurs qui en ont beaucoup, pour deux usages :
+- compresser les données avant un modèle, comme la SVD avant le perceptron du TP2 ;
+- visualiser un corpus sur une carte en deux dimensions.
+Toute réduction perd de l'information : la méthode choisit ce qu'elle préserve (la variance pour la PCA, les voisinages pour t-SNE). Une carte aide à explorer, mais ne prouve pas l'existence de classes.
+Pourquoi le perceptron du TP2 a-t-il fait moins bien que la régression logistique du TP1 ?
+
+=== M041 | explanation | classification_multilabel
+U: Multiclasse ou multilabel, c'est quoi la différence ?
+A: - binaire : deux classes, par exemple positif ou négatif ;
+- multiclasse : une seule classe parmi plusieurs, par exemple un thème parmi scénario, jeu, musique ;
+- multilabel : plusieurs étiquettes possibles pour le même exemple, par exemple un avis qui parle à la fois du scénario et de la musique.
+La cible définit la tâche, et donc aussi les métriques : en multilabel, on évalue chaque étiquette et on précise l'agrégation (micro, macro).
+Un livre qui peut être à la fois « thriller » et « policier », c'est quel cas ?
+
+=== M042 | comparison | arbre_foret
+U: arbre seul ou forêt ?
+A: Un arbre seul est lisible, on peut suivre ses règles, mais il est instable : un petit changement de données peut changer tout l'arbre, et un arbre profond mémorise le train.
+La forêt moyenne beaucoup d'arbres diversifiés (tirages avec remise, sous-ensembles de caractéristiques) : elle est plus stable et généralise mieux, mais elle perd la lisibilité d'un arbre unique.
+Le choix dépend donc de l'importance de l'explicabilité pour ton usage, à mesurer sur la validation.
+Si un client exige de pouvoir justifier chaque décision par des règles, que lui proposerais-tu ?
+
+=== M043 | explanation | sigmoide_seuil
+U: Pourquoi on entraîne avec p mais on décide avec un seuil ?
+A: Parce que l'entraînement a besoin d'une quantité continue pour calculer des gradients : la perte d'entropie croisée utilise directement la probabilité p. Une décision 0/1 ne serait pas dérivable.
+Ensuite, pour agir, on transforme p en décision avec un seuil, par exemple ŷ = 1 si p ≥ 0,5. Le cours le remarque : une bonne décision au seuil peut encore avoir une perte élevée, si p = 0,55 pour un avis positif par exemple.
+Quelle perte obtient un avis positif prédit avec p = 0,55 ?

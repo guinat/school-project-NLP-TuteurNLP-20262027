@@ -1,0 +1,322 @@
+# Dialogues : exploiter les LLM (pipeline, décodage, contexte, prompting, fine-tuning, RAG, outils, agents).
+
+=== L001 | comparison | pipeline_classique_llm
+U: Quelle différence entre le pipeline classique et le pipeline LLM ?
+A: Le pipeline classique apprend une décision ciblée : prétraiter, représenter (TF-IDF), apprendre (logistique), puis décider avec un score et un seuil. Il est petit, rapide et contrôlable, mais une nouvelle cible demande de nouvelles données et un nouvel entraînement.
+Le pipeline LLM part d'un modèle déjà entraîné : on décrit la tâche dans le contexte (rôles, consignes, exemples), on tokenise, on génère, puis on contrôle le format et on évalue.
+Le cours le résume : l'ingénierie se déplace des features vers le contexte, les évaluations et l'orchestration.
+Pour classer 20 000 avis par jour avec une latence minimale, lequel choisirais-tu ?
+
+=== L002 | explanation | classique_llm_hybride
+U: Quand est-ce qu'un LLM n'est pas le bon choix ?
+A: Quand la tâche est étroite, à gros volume et stable, comme classer le sentiment d'avis. Le tableau du cours le dit : les LLM ne remplacent pas automatiquement les modèles ciblés.
+- pipeline classique : faible latence, coût prévisible, répétabilité ; risque de drift et de couverture limitée ;
+- LLM : polyvalence et langage ouvert ; coût par token, variabilité, hallucinations ;
+- hybride : filtrer ou router avec un modèle classique, puis générer avec un LLM.
+Au TP3, distilgpt2 mettait environ une seconde par avis pour un résultat inutilisable, contre 93,4 % de F1 pour TF-IDF + logistique.
+Quel critère regarderais-tu en premier pour trancher sur ton propre projet ?
+
+=== L003 | explanation | api_auto_hebergement
+U: API hébergée ou modèle auto-hébergé ?
+A: Ce sont deux façons d'accéder à un LLM, avec des contraintes différentes :
+- API hébergée : on crée une clé, on envoie la requête, le fournisseur exécute le modèle ; démarrage rapide, peu d'infrastructure, mais il faut surveiller coût, latence, quotas et traitement des données ;
+- auto-hébergement : on télécharge les poids et on choisit le matériel ; plus de contrôle, mais plus d'exploitation (licence, mémoire, maintenance).
+Le cours rappelle que « poids téléchargeables » ne veut pas dire code, données et licence entièrement ouverts.
+Pour un projet manipulant des données confidentielles, quel point vérifierais-tu en priorité avec une API ?
+
+=== L004 | explanation | temperature
+U: c'est quoi la température dans la génération
+A: La température divise les logits avant la softmax : p_i = softmax(z_i / T).
+- T < 1 accentue les écarts : la distribution se concentre sur les tokens les plus probables, la génération devient stable et prévisible ;
+- T > 1 aplatit la distribution : des tokens moins probables sont tirés plus souvent, le texte devient varié mais plus risqué ;
+- T proche de 0 revient à toujours prendre le maximum, comme le greedy.
+Le cours conseille une génération peu aléatoire pour l'extraction et la classification, et d'augmenter progressivement la diversité pour la création, en mesurant les échecs.
+Quelle température choisirais-tu pour un tuteur qui doit donner des définitions exactes ?
+
+=== L005 | calculation | temperature
+U: montre moi l'effet de la température sur les logits (2, 1, 0, -1)
+A: Sans température (T = 1), la softmax donne environ 64,4 %, 23,7 %, 8,7 % et 3,2 %, l'exemple du cours.
+- T = 0,5 : on divise par 0,5, donc logits (4, 2, 0, −2). Les exponentielles valent 54,6, 7,39, 1 et 0,14, soit environ 86,5 %, 11,7 %, 1,6 % et 0,2 %. La distribution se concentre sur le premier token.
+- T = 2 : logits (1 ; 0,5 ; 0 ; −0,5), soit environ 45,5 %, 27,6 %, 16,7 % et 10,2 %. Elle s'aplatit.
+L'ordre des tokens ne change jamais, seule la confiance change.
+Que devient la distribution quand T tend vers l'infini ?
+
+=== L006 | explanation | top_k
+U: Explique le top-k
+A: Le top-k ne garde que les k tokens les plus probables, met les autres à zéro, puis renormalise avant de tirer.
+Avec l'exemple du cours (64,4 %, 23,7 %, 8,7 %, 3,2 %) et k = 2, il reste 64,4 % et 23,7 %, qui deviennent 64,4 / 88,1 ≈ 73,1 % et 26,9 % après renormalisation.
+Un k faible donne un choix étroit et sûr, un k élevé davantage de candidats. Sa limite : k est fixe, alors que le nombre de tokens plausibles varie beaucoup selon le contexte.
+Que se passe-t-il avec k = 1 ?
+
+=== L007 | explanation | top_p
+U: et le top-p ça marche comment
+A: Le top-p, ou échantillonnage par noyau, garde le plus petit ensemble de tokens dont la probabilité cumulée atteint p, puis renormalise.
+Avec les probabilités du cours triées (64,4 %, 23,7 %, 8,7 %, 3,2 %) et p = 0,9 : les cumuls valent 64,4 %, 88,1 %, puis 96,8 %. Il faut donc trois tokens pour dépasser 90 %, et le dernier est écarté.
+L'intérêt par rapport au top-k : le noyau s'adapte. Quand le modèle est sûr de lui, il ne garde qu'un ou deux tokens ; quand il hésite, il en garde beaucoup.
+Avec p = 0,6, combien de tokens resterait-il dans cet exemple ?
+
+=== L008 | comparison | topk_topp
+U: top-k ou top-p, lequel est mieux ?
+A: Aucun n'est meilleur dans l'absolu, ils filtrent différemment :
+- top-k garde toujours le même nombre de candidats, même quand un seul token est vraiment plausible ou quand cinquante le sont ;
+- top-p garde une masse de probabilité fixe, donc un nombre de candidats qui s'adapte à la confiance du modèle.
+Le top-p est souvent préféré pour cette raison. Le cours ajoute deux remarques pratiques : le top-k n'est pas exposé par toutes les API, et on modifie en général la température ou le top-p, pas les deux à la fois.
+Dans quel contexte un top-k fixe à 50 serait-il trop large ?
+
+=== L009 | explanation | greedy
+U: Pourquoi on ne prend pas toujours le token le plus probable ?
+A: Le choix déterministe (greedy, l'argmax) est stable et reproductible, mais il a deux défauts :
+- il produit des textes répétitifs, voire des boucles, car il reprend toujours le chemin le plus probable ;
+- il donne un texte souvent plat, moins naturel.
+L'échantillonnage tire parmi les tokens plausibles : dans l'exemple du cours, après « allons nous promener au », « parc » sort à 62 %, mais « jardin » peut aussi être tiré.
+Pour une évaluation reproductible ou une tâche factuelle, le greedy reste un bon choix ; on peut limiter les répétitions avec une pénalité de répétition.
+Pourquoi le greedy rend-il une évaluation plus facile à reproduire ?
+
+=== L010 | explanation | max_tokens
+U: à quoi sert max_new_tokens ?
+A: Il borne la longueur de la sortie générée, en tokens. Le cours le range dans le tableau des paramètres de décodage :
+- trop faible : la réponse est tronquée au milieu d'une phrase ;
+- trop élevé : coût et latence augmentent, et le modèle peut se mettre à divaguer.
+Il faut aussi le compter dans la fenêtre de contexte : la place réservée à la réponse s'ajoute à celle des instructions et de l'historique.
+La génération s'arrête avant si le modèle produit son token de fin, par exemple <|im_end|> pour Qwen.
+Si une réponse s'arrête toujours en plein milieu, quel réglage vérifies-tu en premier ?
+
+=== L011 | explanation | fenetre_contexte
+U: c'est quoi la fenêtre de contexte
+A: C'est le nombre maximal de tokens que le modèle peut traiter en une fois. Le cours la présente comme un budget partagé entre les instructions, l'historique, les documents fournis, la sortie réservée et une marge.
+Deux remarques du cours :
+- plus long n'est pas toujours mieux : bruit, conflits d'instructions et dilution de l'information peuvent dégrader la réponse ;
+- le contexte a un coût : plus de tokens, c'est plus de latence et de facture.
+Il faut toujours réserver explicitement la place de la réponse.
+Dans un chatbot, quelle partie du contexte grandit à chaque échange ?
+
+=== L012 | explanation | historique
+U: Comment on gère l'historique dans un chatbot ?
+A: Le modèle n'a pas de mémoire entre deux appels : on lui renvoie à chaque tour la conversation passée dans le contexte. Comme la fenêtre est limitée, il faut contrôler la taille de cet historique.
+Les solutions courantes :
+- garder seulement les N derniers échanges ;
+- retirer les plus anciens jusqu'à tenir dans un budget de tokens, en gardant toujours le message système ;
+- résumer les échanges anciens.
+Le message système, lui, est toujours conservé, car il porte le rôle et les règles.
+Pourquoi ne faut-il pas couper un échange au milieu, en gardant une question sans sa réponse ?
+
+=== L013 | explanation | roles
+U: c'est quoi les rôles system user assistant ?
+A: Un prompt moderne est une conversation structurée où chaque message indique qui parle :
+- system (ou developer) : règles stables, identité, limites ;
+- user : la demande, les données et les contraintes de la requête ;
+- assistant : les réponses précédentes, conservées dans l'historique.
+Les séparer permet de changer la demande sans réécrire les règles, de garder un dialogue multi-tour cohérent et de distinguer les textes à analyser des consignes. Le cours insiste : les données non fiables doivent être délimitées et traitées comme du contenu, jamais comme des instructions.
+Dans quel rôle mettrais-tu le périmètre de ton agent ?
+
+=== L014 | comparison | zero_few_shot
+U: zero-shot vs few-shot ?
+A: - zero-shot : on donne seulement l'instruction, sans exemple. C'est rapide et économique, mais la frontière entre les cas peut rester ambiguë ;
+- few-shot : on ajoute quelques démonstrations entrée → sortie dans le contexte. Le modèle en déduit le format et la décision, mais cela consomme du contexte et il peut copier les biais des exemples.
+Au TP3 avec distilgpt2, le few-shot a fait passer le respect du format de 0 % à 100 %, mais le modèle répondait « négatif » à tous les avis : il avait appris le format, pas la tâche.
+Comment choisir de bons exemples pour un few-shot ?
+
+=== L015 | explanation | bon_prompt
+U: Comment écrire un bon prompt ?
+A: Le cours le définit comme une spécification testable, en six composants :
+1. objectif : un verbe d'action et le résultat attendu ;
+2. contexte : public, domaine, données utiles ;
+3. contraintes : périmètre, langue, interdits ;
+4. format : JSON, tableau, longueur ;
+5. exemples : cas représentatifs et contre-exemples ;
+6. critères : ce qui rend la réponse correcte.
+Ensuite, on itère : construire un jeu d'évaluation, écrire une version simple, observer les erreurs récurrentes, préciser, puis comparer qualité, coût et latence. Il ne faut pas optimiser sur quelques anecdotes.
+Lequel de ces six composants manque le plus souvent dans un prompt écrit à la va-vite ?
+
+=== L016 | explanation | prompt_versionne
+U: Pourquoi le cours dit que le prompt fait partie du logiciel ?
+A: Parce qu'un changement de prompt change le comportement du système, exactement comme un changement de code. Le cours en tire trois exigences : versionner le prompt, faire des tests de régression et surveiller le système en production.
+Concrètement, on garde un jeu d'évaluation fixe et on relance les mêmes requêtes à chaque modification du prompt ou du modèle, pour vérifier qu'on n'a rien cassé. Le comportement peut aussi changer avec une nouvelle version du modèle, à prompt identique.
+Que mettrais-tu dans un jeu de tests de régression pour un chatbot de révision ?
+
+=== L017 | explanation | fine_tuning
+U: Quand faut-il faire du fine-tuning ?
+A: Le fine-tuning spécialise un comportement récurrent à partir d'exemples entrée → sortie désirée : un style, un format, une décision. Le cours cite comme bon cas la prédiction du sentiment avec un format constant, à partir de nombreux exemples.
+Ce n'est pas le bon outil pour :
+- injecter des faits qui changent souvent : mieux vaut fournir des documents récents (RAG) ;
+- corriger une consigne mal écrite : il faut d'abord améliorer le prompt.
+La qualité et la représentativité des exemples comptent souvent plus que leur quantité.
+Pour un agent qui doit connaître les horaires de bus de la semaine, fine-tuning ou RAG ?
+
+=== L018 | explanation | lora
+U: c'est quoi LoRA ?
+A: LoRA (Low-Rank Adaptation) est une méthode de PEFT, c'est-à-dire d'ajustement d'un petit nombre de paramètres. Les poids W du modèle restent gelés, et on apprend seulement une correction de faible rang : W' = W + (α/r)·B·A, avec A de taille r × d_entrée et B de taille d_sortie × r.
+Avec r petit (8 ou 16), le nombre de paramètres entraînés chute : pour une matrice 896 × 896, on apprend 16 × (896 + 896) = 28 672 valeurs au lieu de 802 816.
+B est initialisée à zéro : au départ, le modèle adapté est exactement le modèle de base.
+Pourquoi le fait que W reste gelé économise-t-il beaucoup de mémoire avec AdamW ?
+
+=== L019 | calculation | lora_parametres
+U: Combien de paramètres LoRA pour une matrice 12288 x 12288 avec r=8 ?
+A: LoRA remplace la mise à jour complète par deux matrices fines : A de taille 8 × 12 288 et B de taille 12 288 × 8.
+Nombre de paramètres : 8 × 12 288 + 12 288 × 8 = 196 608.
+La matrice complète en contient 12 288² = 150 994 944. On n'entraîne donc qu'environ 0,13 % des paramètres de cette matrice.
+C'est la même idée que la factorisation W_V = W_O × W̃_V du cours sur l'attention : une grande matrice remplacée par le produit de deux matrices fines.
+Combien de paramètres faudrait-il avec r = 16 ?
+
+=== L020 | comparison | lora_qlora
+U: Différence entre LoRA et QLoRA ?
+A: Les deux entraînent seulement des adaptateurs de faible rang, le modèle de base restant gelé. La différence porte sur la façon de stocker ce modèle de base :
+- LoRA : le modèle de base est chargé en précision normale (32 ou 16 bits) ;
+- QLoRA : le modèle de base est quantifié en 4 bits, ce qui divise sa mémoire par quatre à huit, et les adaptateurs restent entraînés en précision plus élevée.
+QLoRA permet d'adapter de plus gros modèles sur un GPU modeste, au prix d'un calcul un peu plus lent et d'une petite perte de précision. La quantification 4 bits usuelle, avec bitsandbytes, demande un GPU.
+Sur un ordinateur sans GPU, laquelle des deux méthodes est la plus simple à mettre en œuvre ?
+
+=== L021 | explanation | rang_lora
+U: Comment choisir le rang r de LoRA ?
+A: Le rang r fixe la capacité de l'adaptateur. Un r petit (4 à 8) apprend peu de paramètres, suffit souvent pour un style ou un format et limite le surapprentissage ; un r plus grand (16 à 64) peut capturer des adaptations plus riches mais demande plus de données.
+On l'accompagne d'un facteur α : la correction est multipliée par α/r, et on prend souvent α = 2r.
+Comme pour tout hyperparamètre, la bonne valeur se choisit sur la validation. Avec quelques centaines d'exemples, un rang de 8 à 16 est un point de départ raisonnable.
+Pourquoi un rang trop grand est-il risqué avec un petit jeu de données ?
+
+=== L022 | explanation | rag
+U: Explique le RAG
+A: Le RAG (Retrieval-Augmented Generation) injecte des connaissances à la demande. Pour chaque question, on cherche les passages pertinents dans un corpus, souvent avec un index vectoriel et des filtres, puis on les place dans le contexte du LLM, qui produit une réponse sourcée.
+Apports : des informations actualisables sans réentraînement, des sources consultables, un contrôle du corpus et des droits d'accès.
+Échecs possibles : mauvais document, mauvais passage, contexte trop long ou réponse non fidèle. Le RAG ne garantit pas la factualité.
+Il faut donc évaluer séparément la recherche des passages et la fidélité de la réponse.
+Pourquoi le RAG est-il plus adapté que le fine-tuning pour des informations qui changent chaque semaine ?
+
+=== L023 | comparison | rag_finetuning
+U: RAG ou fine-tuning pour mon chatbot ?
+A: Ils répondent à des besoins différents :
+- le fine-tuning (ou LoRA) modifie le comportement : style, format, décision, refus des demandes hors sujet ;
+- le RAG fournit des informations : des faits actualisables, avec des sources, sans réentraîner.
+Le cours résume : comportement répétitif spécialisé → fine-tuning ; connaissances actualisables → RAG. Les deux se combinent souvent : un modèle adapté pour le ton et le format, qui répond à partir de passages retrouvés.
+Ton chatbot doit-il surtout changer sa manière de répondre, ou connaître des informations qu'il n'a pas ?
+
+=== L024 | explanation | tool_calling
+U: c'est quoi le tool calling ?
+A: Le tool calling relie le modèle à des actions. Le modèle ne doit pas inventer le résultat d'une action : il choisit une fonction et produit des arguments structurés, en général du JSON, que l'application exécute.
+Les cinq étapes du cours : demande en langage naturel, appel (nom + JSON), validation (permissions, schéma), exécution (code ou API), réponse avec le résultat.
+Côté sécurité : liste blanche de fonctions, validation des arguments, moindre privilège et confirmation humaine pour les actions irréversibles. Le modèle propose l'appel, l'application reste responsable.
+Pourquoi faut-il valider les arguments produits par le modèle avant d'exécuter la fonction ?
+
+=== L025 | explanation | mcp
+U: MCP c'est quoi ?
+A: MCP (Model Context Protocol) standardise la connexion entre une application à base de LLM et des sources de données ou d'outils. L'hôte, avec son client MCP, découvre les capacités d'un serveur MCP puis les invoque. Un serveur expose trois types d'éléments :
+- tools : des actions ;
+- resources : du contexte ;
+- prompts : des modèles de messages.
+Le gain : une interface commune au lieu d'une intégration spécifique par outil. Mais MCP ne remplace ni les permissions, ni la validation : standardiser l'accès exige de limiter précisément ce qui est exposé.
+Pour un catalogue de films, que mettrais-tu en tool et que mettrais-tu en resource ?
+
+=== L026 | explanation | agent
+U: c'est quoi un agent LLM ?
+A: Un agent décide dans une boucle d'action : à partir d'un objectif, il raisonne et planifie, agit avec un outil, observe le résultat, puis met à jour son plan jusqu'à atteindre l'objectif.
+Le cours conseille de l'utiliser pour des sous-tâches imprévisibles, de l'exploration ou l'interaction avec plusieurs systèmes, quand on peut vérifier le résultat dans l'environnement. Garde-fous : budget d'étapes, permissions minimales, points de contrôle humains, journaux, critères d'arrêt et évaluation de bout en bout.
+La règle : commencer par un workflow déterministe, et n'ajouter de l'autonomie que si elle apporte une valeur mesurable.
+Pourquoi un budget d'étapes est-il indispensable dans une boucle d'agent ?
+
+=== L027 | explanation | choisir_brique
+U: Comment choisir entre prompting, RAG, fine-tuning et agent ?
+A: Le cours propose de choisir la brique la plus simple qui suffit :
+- classe rare, décision stable : modèle pondéré + seuil ;
+- tâche étroite à gros volume : pipeline classique ;
+- langage ouvert ou génération : prompting d'un LLM ;
+- connaissances actualisables : RAG ;
+- comportement répétitif spécialisé : fine-tuning ou PEFT ;
+- actions externes : outils, MCP, agent.
+La performance vient du système complet : données, modèle, contexte, contrôle des sorties et évaluation. Et l'intérêt d'une brique se mesure sur une tâche précise.
+Si ton format de sortie reste irrégulier malgré un bon prompt, quelle brique essaies-tu ?
+
+=== L028 | explanation | hallucination
+U: Pourquoi les LLM inventent des choses ?
+A: Parce qu'un LLM est entraîné à produire une suite plausible, pas une suite vraie : à chaque pas, il tire un token probable d'après sa distribution. Quand l'information manque dans ses paramètres ou dans le contexte, il continue quand même avec quelque chose de vraisemblable.
+Le cours cite l'hallucination parmi les risques du pipeline LLM. Les parades : fournir les documents utiles (RAG), demander de dire « je ne sais pas », baisser la température pour les tâches factuelles, et surtout évaluer les réponses sur des cas vérifiables.
+Pourquoi un petit modèle hallucine-t-il en général davantage qu'un grand ?
+
+=== L029 | explanation | evaluation_llm
+U: comment on évalue un chatbot ?
+A: Comme tout système : avec un jeu de requêtes fixé à l'avance et des critères explicites, avant de regarder les sorties. Par exemple, une grille notée de 0 à 2 sur la pertinence et la correction, le respect du rôle et du format, la prise en compte de l'historique, la reconnaissance des demandes hors périmètre et l'absence d'informations inventées.
+On compare les versions (prompts, modèles) sur les mêmes requêtes, et on complète les scores par l'analyse d'erreurs concrètes. Le cours le rappelle : la boîte noire change l'interface, pas l'exigence, et données, mesures et tests restent centraux.
+Pourquoi faut-il fixer la grille avant de lire les réponses ?
+
+=== L030 | explanation | parametres_decodage_table
+U: résume moi les paramètres de décodage
+A: Le tableau du cours :
+- température : modifie les probabilités de sélection ; faible = stable et prévisible, élevée = variée et plus risquée ;
+- top-k : garde les k tokens les plus probables ; faible = choix étroit ;
+- top-p : garde le plus petit ensemble dépassant la masse p ; faible = noyau réduit ;
+- max tokens : borne la longueur ; trop faible = réponse tronquée, trop élevé = coût et latence.
+Règle pratique : extraction et classification avec une génération peu aléatoire, création en augmentant progressivement la diversité et en mesurant les échecs.
+Quels réglages proposerais-tu pour générer des idées de titres de film ?
+
+=== L031 | quiz | top_p
+U: pose moi une question sur le top-p
+A: Question : les probabilités triées du prochain token sont 50 %, 30 %, 15 % et 5 %. Avec top-p = 0,8, quels tokens sont gardés, et quelles sont leurs nouvelles probabilités ?
+U: on garde les deux premiers car 50+30 = 80, donc 62,5% et 37,5%
+A: Exact. Le cumul atteint 80 % avec les deux premiers tokens, ce qui suffit pour p = 0,8. Après renormalisation : 50 / 80 = 62,5 % et 30 / 80 = 37,5 %.
+Petite subtilité : selon l'implémentation, on garde les tokens tant que le cumul est inférieur à p, puis celui qui le fait atteindre. Ici, le résultat est le même.
+Et avec top-p = 0,9, combien de tokens seraient gardés ?
+
+=== L032 | quiz | temperature
+U: Teste moi sur la température
+A: Question : tu baisses la température de 1 à 0,2. Le token le plus probable devient-il plus probable ou moins probable, et l'ordre des tokens change-t-il ?
+U: plus probable et l'ordre change
+A: La première partie est juste : avec T = 0,2, on divise les logits par 0,2, ce qui multiplie les écarts par cinq ; le token le plus probable devient encore plus dominant.
+En revanche, l'ordre ne change pas : diviser tous les logits par le même nombre positif conserve leur classement, et la softmax est croissante. Seule la confiance change.
+Question suivante : quelle température donnerait exactement le même résultat que le greedy ?
+
+=== L033 | quiz | zero_few_shot
+U: quiz sur le prompting
+A: Question : au TP3, le few-shot a donné 100 % de format respecté mais une exactitude de 0,500 sur un jeu équilibré. Pourquoi ce 0,500 n'est-il pas un « niveau du hasard » rassurant ?
+U: parce que le modèle répondait toujours négatif
+A: C'est ça. Le modèle répondait « négatif » aux 40 avis : un classifieur constant obtient mécaniquement 50 % sur un jeu équilibré 20/20, sans rien lire. Il a appris le format grâce aux exemples, pas la tâche.
+La leçon du cours : toujours regarder la distribution des prédictions et les métriques par classe, pas seulement le score global.
+Qu'aurait affiché ce même modèle sur un jeu contenant 80 % d'avis négatifs ?
+
+=== L034 | quiz | lora
+U: interroge moi sur LoRA
+A: Question : pendant un entraînement LoRA, quels paramètres reçoivent des gradients et sont modifiés : ceux du modèle de base, ceux des adaptateurs, ou les deux ?
+U: les deux mais le modèle de base moins
+A: Pas tout à fait : seuls les adaptateurs sont modifiés. Les poids du modèle de base sont gelés (requires_grad = False) : ils participent au calcul, et le gradient les traverse pour atteindre les adaptateurs des couches précédentes, mais aucune mise à jour ne leur est appliquée.
+C'est ce qui rend LoRA économe : l'optimiseur ne stocke ses moyennes que pour les adaptateurs, et on ne sauvegarde que quelques mégaoctets.
+Comment vérifierais-tu dans ton code que le modèle de base n'a pas bougé ?
+
+=== L035 | explanation | instruction_tuning
+U: c'est quoi l'instruction tuning ?
+A: C'est la deuxième des trois étapes qui transforment un modèle de langage en assistant, d'après le cours :
+1. pré-entraînement : prédire le token suivant sur de très grands corpus ;
+2. instruction tuning : apprendre sur des exemples d'instructions et de réponses, pour répondre au bon format ;
+3. optimisation par préférences : favoriser les réponses jugées plus utiles et plus sûres (InstructGPT, Ouyang et al., 2022).
+Un modèle sans instruction tuning, comme distilgpt2 au TP3, ne répond pas à une consigne : il continue le texte.
+Un modèle « Instruct » comme Qwen2.5-0.5B-Instruct a-t-il suivi l'étape 2 ?
+
+=== L036 | explanation | modele_fondation
+U: Pourquoi distilgpt2 ne répondait pas à mes questions au TP3 ?
+A: Parce que c'est un modèle de fondation brut : il a seulement appris à prédire le token suivant, sans instruction tuning. Il ne « sait » pas qu'une consigne attend une réponse ; il continue le texte de la façon la plus probable.
+Au TP3, après « Write one sentence explaining what a movie review is. », il produisait des retours à la ligne : dans son corpus, une phrase finie est souvent suivie d'un saut de ligne. En revanche, il prolongeait très bien un début d'histoire.
+Il faut donc un modèle instructionnel, ou un prompt qui ressemble à un début de texte à compléter.
+Comment reformulerais-tu une consigne pour qu'un modèle brut la complète correctement ?
+
+=== L037 | explanation | prompt_injection
+U: c'est quoi le risque si l'utilisateur met des instructions dans un document ?
+A: C'est le risque d'injection : un texte à analyser contient des phrases comme « ignore les consignes précédentes », et le modèle risque de les suivre comme si elles venaient du développeur.
+Le cours donne la règle : les données non fiables doivent être délimitées et traitées comme du contenu, jamais comme des instructions. En pratique, on sépare les rôles (system pour les règles, user pour la demande), on délimite clairement les documents, et on ne donne au modèle que les permissions strictement nécessaires.
+Pourquoi ce risque devient-il plus grave quand le modèle peut appeler des outils ?
+
+=== L038 | explanation | repetition_penalty
+U: c'est quoi repetition_penalty ?
+A: C'est un réglage de décodage qui réduit les logits des tokens déjà présents dans le texte, pour éviter que le modèle se répète. Avec une valeur de 1,1, un token déjà vu devient un peu moins probable ; à 1,0, il n'y a aucun effet.
+Il est utile avec le greedy, qui a tendance à boucler. Mais une valeur trop forte gêne les répétitions légitimes, comme les mots techniques d'une explication (« attention », « token »), et peut faire dériver le texte.
+Ce paramètre n'apparaît pas dans le tableau du cours, mais il agit sur la même chose : les logits avant la sélection.
+Pourquoi une pénalité trop forte pourrait-elle nuire à une explication technique ?
+
+=== L039 | explanation | latence_cout
+U: pourquoi un LLM coûte plus cher qu'un modèle classique ?
+A: Parce qu'un LLM fait un passage complet dans le réseau pour chaque token généré, avec des centaines de millions ou des milliards de paramètres, alors qu'une régression logistique fait un seul produit scalaire par avis.
+Le coût dépend donc du nombre de tokens en entrée (prompt, historique, documents) et en sortie. Au TP3, un modèle de 82 millions de paramètres mettait déjà environ une seconde par avis sur CPU.
+Le cours conseille de journaliser coût et latence et de les comparer à la qualité, sur vos données.
+Pourquoi limiter la taille de l'historique réduit-il aussi la latence d'un chatbot ?
+
+=== L040 | explanation | generation_autoregressive
+U: c'est quoi la génération autorégressive
+A: C'est la génération token par token, où chaque token produit est ajouté au contexte avant de prédire le suivant. À chaque étape : contexte → probabilités → choix d'un token → nouveau contexte.
+Dans le cours : « Paris est une ville » donne « Française » avec 0,94, qu'on ajoute au contexte, puis on recommence. Dans le code du TP1 Transformers, c'est la boucle qui garde les logits de la dernière position, applique la softmax, tire un token avec torch.multinomial et le concatène à idx.
+Le modèle ne peut donc pas revenir en arrière sur un token déjà produit.
+Pourquoi ne garde-t-on que les logits de la dernière position à chaque étape ?

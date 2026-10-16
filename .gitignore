@@ -1,0 +1,15 @@
+# environnement Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.gradio/
+
+# fichiers intermédiaires LaTeX (rapport.pdf est copié à la racine)
+report/*.aux
+report/*.fdb_latexmk
+report/*.fls
+report/*.log
+report/*.out
+report/*.pdf
+report/*.synctex.gz

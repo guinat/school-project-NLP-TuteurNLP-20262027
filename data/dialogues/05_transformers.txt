@@ -1,0 +1,355 @@
+# Dialogues : architecture et entraînement des Transformers (cours séances 3-4 et TP Transformers).
+
+=== T001 | explanation | prochain_token
+U: Comment un LLM génère du texte ?
+A: Un LLM génère une séquence un token à la fois. À chaque étape, il lit tout le contexte disponible, calcule une distribution de probabilité sur le prochain token, en choisit un, l'ajoute au contexte, puis recommence.
+Exemple du cours : après « Paris est une ville », le modèle donne « Française » avec 0,94, « l'Europe » avec 0,04 et « Seine » avec 0,02. Le token retenu rejoint le contexte et sert à prédire le suivant.
+Tout le reste (embeddings, attention, MLP) sert à calculer cette distribution.
+Qu'est-ce qui décide si l'on prend « Française » ou si l'on tire un autre token ?
+
+=== T002 | explanation | trois_blocs
+U: Quelles sont les grandes briques d'un Transformer ?
+A: Le cours suit l'exemple de GPT-3 en trois briques :
+1. les embeddings : représenter chaque token par un vecteur (12 288 dimensions dans GPT-3), auquel on ajoute la position ;
+2. l'attention : faire circuler l'information entre les tokens pour construire le contexte ;
+3. le MLP : transformer chaque token séparément et mobiliser des associations apprises, des « faits ».
+Attention et MLP se relaient dans chaque couche, répétée 96 fois dans GPT-3, avec une LayerNorm et des connexions résiduelles. À la fin, l'unembedding et la softmax donnent la distribution du prochain token.
+Laquelle de ces briques est la seule à mélanger l'information entre les tokens ?
+
+=== T003 | explanation | matrice_embedding
+U: c'est quoi la matrice d'embedding ?
+A: C'est une table qui contient un vecteur par token du vocabulaire. L'identifiant entier d'un token sert à lire sa ligne : c'est une simple recherche, pas un calcul.
+Dans GPT-3, elle fait 50 257 tokens × 12 288 dimensions, soit 617 558 016 paramètres. Ses valeurs sont aléatoires au départ, puis ajustées pendant l'entraînement pour que les tokens d'usages proches obtiennent des représentations proches.
+Dans le code des TP, c'est nn.Embedding(vocab_size, n_embd).
+Quelle est la forme de la sortie de nn.Embedding pour une entrée de forme (B, T) ?
+
+=== T004 | explanation | unembedding
+U: C'est quoi l'unembedding ?
+A: C'est le chemin inverse de l'embedding : on part du vecteur contextualisé du dernier token et on revient vers le vocabulaire.
+On multiplie ce vecteur par la matrice d'unembedding, de taille 50 257 × 12 288 dans GPT-3. On obtient un score par token du vocabulaire, soit 50 257 scores : ce sont les logits. Ce ne sont pas encore des probabilités : on applique ensuite la softmax.
+Chaque score est un produit scalaire entre le vecteur final et la ligne d'un token : plus ils sont alignés, plus le token est probable. Dans les TP, cette couche s'appelle lm_head.
+Combien de paramètres contient la matrice d'unembedding de GPT-3 ?
+
+=== T005 | explanation | logits
+U: Les logits c'est quoi exactement ?
+A: Les logits sont les scores bruts produits par l'unembedding, un par token du vocabulaire. Ils peuvent être négatifs, supérieurs à 1, et ne somment pas à 1 : dans le cours, on voit par exemple −53,1, 151,7 ou −99,2.
+La softmax les transforme en probabilités. Avec Hugging Face, model(input_ids).logits a la forme (batch, longueur de séquence, taille du vocabulaire) : un vecteur de logits pour chaque position. Pour générer, on ne garde que celui de la dernière position.
+Seules les différences entre logits comptent : ajouter la même constante à tous ne change pas la softmax.
+Quelle forme auraient les logits pour 1 phrase de 7 tokens avec un vocabulaire de 151 936 tokens ?
+
+=== T006 | calculation | softmax
+U: Refais moi le calcul de la softmax du cours
+A: On part des scores z = (2, 1, 0, −1) pour Rogue, Dumbledore, McGonagall et Quirrell.
+1. Exponentielles : e² = 7,39 ; e¹ = 2,72 ; e⁰ = 1,00 ; e⁻¹ = 0,37.
+2. Somme : S = 7,39 + 2,72 + 1,00 + 0,37 = 11,48.
+3. Division par S : 7,39 / 11,48 ≈ 64,4 % ; 2,72 / 11,48 ≈ 23,7 % ; 1,00 / 11,48 ≈ 8,7 % ; 0,37 / 11,48 ≈ 3,2 %.
+La somme fait 100 % : on a une vraie distribution de probabilité. L'exponentielle rend tout positif et amplifie les écarts : un point de logit en plus multiplie la probabilité relative par e ≈ 2,72.
+Que donnerait la softmax de (3, 2, 1, 0) ?
+
+=== T007 | explanation | softmax
+U: pourquoi on utilise l'exponentielle dans la softmax
+A: Pour trois raisons :
+- rendre tous les scores positifs, même les logits négatifs ;
+- conserver l'ordre : un score plus grand donne toujours une probabilité plus grande ;
+- amplifier les écarts : une différence de 1 entre deux logits donne un rapport de probabilités de e ≈ 2,72, quelle que soit la valeur de départ.
+Après l'exponentielle, on divise par la somme pour que le total vaille 1. Conséquence pratique : softmax(z + c) = softmax(z) pour toute constante c, et le masque causal utilise −∞ car e^(−∞) = 0.
+Pourquoi le fait d'ajouter la même constante à tous les logits ne change-t-il rien ?
+
+=== T008 | explanation | attention_intuition
+U: Explique moi l'attention simplement
+A: L'attention permet à chaque token d'aller chercher de l'information dans les tokens qui le précèdent. Dans « Le petit chaperon rouge », le vecteur de « chaperon » s'enrichit avec l'information « petit ».
+Chaque token produit trois vecteurs :
+- une Query : ce qu'il cherche ;
+- une Key : ce qu'il peut apporter ;
+- une Value : l'information qu'il transmet.
+On compare la Query de « chaperon » aux Keys des tokens précédents par produit scalaire, on normalise avec la softmax pour obtenir des poids, puis on additionne les Values pondérées. Le résultat est ajouté à l'embedding de départ.
+Pourquoi « chaperon » ne peut-il pas aller chercher d'information dans « rouge » ?
+
+=== T009 | explanation | query
+U: c'est quoi la Query dans l'attention
+A: La Query décrit ce que le token courant recherche dans le contexte. Pour « chaperon », c'est en quelque sorte la question : « parmi les mots déjà vus, lesquels peuvent préciser mon sens ? ».
+Elle est calculée par une matrice apprise propre à chaque tête : q = W_Q · E. Dans GPT-3, W_Q fait 128 × 12 288 et projette l'embedding de 12 288 dimensions vers un espace de 128 dimensions.
+La Query formule la recherche, mais ne décide pas encore quel mot est important : ce sera le rôle de la comparaison avec les Keys.
+Avec quoi la Query de « chaperon » est-elle comparée, et par quelle opération ?
+
+=== T010 | explanation | key
+U: Et la Key ?
+A: La Key décrit ce qu'un token peut apporter aux autres. Elle est calculée par une autre matrice apprise de la tête : k = W_K · E, de 12 288 vers 128 dimensions dans GPT-3.
+On compare la Query du token courant à la Key de chaque token visible par produit scalaire : plus ils sont alignés, plus ce token est jugé utile. Dans le cours, la Query de « chaperon » est fortement alignée avec la Key de « petit », car cet adjectif qualifie directement le nom.
+Query et Key déterminent où regarder ; l'information récupérée vient des Values.
+Pourquoi a-t-on besoin de deux matrices W_Q et W_K différentes plutôt que d'une seule ?
+
+=== T011 | explanation | value
+U: à quoi servent les Values ?
+A: Queries et Keys décident où regarder, les Values décident quelle information récupérer. Chaque token produit une Value avec la matrice W_V de la tête.
+La sortie pour « chaperon » est la somme des Values pondérées par les poids d'attention : dans le cours, ΔE = 0,01·v_Le + 0,95·v_petit + 0,04·v_chaperon, et rouge reçoit 0 car il est masqué. « petit » domine donc le mélange.
+Ce ΔE est ensuite ajouté à l'embedding de départ par la connexion résiduelle.
+Au TP2, pourquoi la sortie mélange-t-elle les Values v et non directement les Keys k ?
+
+=== T012 | calculation | score_attention
+U: comment on calcule le score d'attention entre deux tokens ?
+A: Le score entre la Key du token j et la Query du token i vaut s = (k_j · q_i) / √d_k, où d_k est la dimension des Queries et des Keys.
+Dans GPT-3, d_k = 128, donc on divise par √128 ≈ 11,3. Par exemple, un produit scalaire de 57 donnerait un score d'environ 5,0.
+On calcule ces scores pour toutes les paires et on remplit une matrice n × n. Ce ne sont pas encore des poids : il faut appliquer le masque causal puis la softmax.
+Pourquoi divise-t-on par √d_k plutôt que de garder le produit scalaire brut ?
+
+=== T013 | explanation | racine_dk
+U: Pourquoi on divise par racine de d_k dans l'attention ?
+A: Parce que la variance du produit scalaire q · k grandit avec la dimension : si les composantes sont indépendantes et de variance 1, Var(q · k) ≈ d_k. Avec de grands scores, la softmax devient presque un argmax : un token prend presque tout le poids et les autres ont des gradients quasi nuls.
+Diviser par √d_k ramène la variance vers 1 et garde la softmax informative. Au TP2, on l'a vérifié : la variance mesurée valait environ 5, 11, 55 puis 177 pour d_h = 4, 16, 64 et 256, ce qui suit bien d_h.
+Que devient la softmax de (0,1 ; −0,2 ; 0,3 ; −0,2 ; 0,5) si on multiplie ces scores par 8 ?
+
+=== T014 | explanation | masque_causal
+U: c'est quoi le masque causal
+A: Le masque causal empêche chaque token de regarder les tokens qui viennent après lui. Avant la softmax, on remplace les scores des positions futures par −∞ ; comme e^(−∞) = 0, leurs poids d'attention deviennent exactement nuls, et chaque ligne somme quand même à 1.
+C'est indispensable pour l'entraînement : on prédit toutes les positions en parallèle, et sans masque le modèle verrait le token qu'il doit prédire. Il tricherait, et ne saurait plus générer, car à la génération le futur n'existe pas encore.
+Dans le TP2, c'est wei.masked_fill(tril == 0, float('-inf')).
+Pourquoi met-on −∞ et pas simplement 0 avant la softmax ?
+
+=== T015 | quiz | masque_causal
+U: Interroge moi sur le masque causal
+A: Question : pour la séquence « Le petit chaperon rouge », combien de poids d'attention non nuls reçoit la Query de « chaperon », et vers quels tokens ?
+U: 3, vers le, petit et chaperon
+A: Exact. « chaperon » est en troisième position : le masque causal lui laisse voir « Le », « petit » et lui-même, et « rouge » est masqué. Dans l'exemple du cours, les poids valent 1 %, 95 % et 4 %, et leur somme fait bien 1.
+De façon générale, le token en position t voit t tokens, d'où environ n(n + 1)/2 scores utiles sur les n² de la matrice.
+Question suivante : combien de scores non masqués compte une séquence de 4 tokens ?
+
+=== T016 | explanation | multi_tetes
+U: pourquoi plusieurs têtes d'attention ?
+A: Parce qu'une seule façon de regarder ne suffit pas : le langage contient beaucoup de types de relations. Une tête peut privilégier les relations adjectif-nom (« petit » qualifie « chaperon »), une autre l'effet d'un verbe sur son complément (« planté » sur « voiture »), d'autres les références ou les accords.
+Chaque tête a ses propres matrices W_Q, W_K et W_V et calcule sa propre correction ΔE. Les corrections sont combinées puis ajoutées à l'embedding. GPT-3 utilise 96 têtes par couche.
+Le cours précise que ces spécialisations sont une intuition : elles sont apprises et ne suivent pas forcément une règle grammaticale.
+Les 96 têtes d'une couche sont-elles calculées en parallèle ou les unes après les autres ?
+
+=== T017 | explanation | residuel
+U: c'est quoi la connexion résiduelle ?
+A: La connexion résiduelle ajoute la sortie d'un bloc à son entrée au lieu de la remplacer : E' = E + ΔE. Le vecteur est enrichi, pas écrasé.
+Dans le cours, l'embedding de « chaperon » garde son sens général et reçoit en plus l'information « petit » apportée par l'attention ; de même, le MLP ajoute « est un chanteur » à « s'appelle Michael Jackson ».
+Elle facilite aussi l'entraînement de réseaux profonds : le gradient peut remonter directement par l'addition, sans traverser toutes les transformations. Au TP3, retirer le résiduel dégradait nettement l'apprentissage.
+Que vaut la sortie d'un bloc résiduel si ΔE est nul ?
+
+=== T018 | explanation | mlp_transformer
+U: À quoi sert le MLP dans un Transformer ?
+A: Le MLP transforme chaque token séparément, sans le comparer aux autres. Le cours l'interprète comme le lieu où le modèle mobilise des associations apprises, des « faits ».
+Il fait trois opérations : une projection vers le haut (12 288 → 49 152 dans GPT-3), une activation non linéaire (ReLU dans le cours, GELU en pratique), puis une projection vers le bas (49 152 → 12 288). Chaque ligne de W_up agit comme un détecteur, par exemple « s'appelle Michael Jackson » ; quand il s'active, la colonne correspondante de W_down ajoute une direction, par exemple « chanteur ».
+Quelle différence fondamentale y a-t-il entre ce que fait le MLP et ce que fait l'attention ?
+
+=== T019 | calculation | mlp_parametres
+U: Combien de paramètres dans le MLP de GPT-3 ?
+A: Par couche, deux matrices :
+- up-projection : 49 152 × 12 288 ;
+- down-projection : 12 288 × 49 152.
+Sur les 96 couches, chacune totalise 49 152 × 12 288 × 96 = 57 982 058 496 paramètres, soit 115 964 116 992 pour le MLP complet, environ 116 milliards. Les biais n'ajoutent que 5 898 240 paramètres, négligés dans le décompte.
+Le MLP représente donc environ les deux tiers des 175 milliards de GPT-3. Les mêmes matrices sont réutilisées pour tous les tokens d'une couche.
+Pourquoi augmenter la longueur du contexte augmente-t-il le calcul du MLP mais pas son nombre de paramètres ?
+
+=== T020 | calculation | gpt3_parametres
+U: Comment on retrouve les 175 milliards de paramètres de GPT-3 ?
+A: Avec d = 12 288, d_query = 128, 96 têtes, 96 couches, un vocabulaire de 50 257 et 49 152 neurones :
+- embedding et unembedding : 2 × 617 558 016 ≈ 1,24 milliard ;
+- attention : 4 matrices (Q, K, V, sortie) × 128 × 12 288 × 96 × 96 = 4 × 14 495 514 624 ≈ 58 milliards ;
+- MLP : 2 × 57 982 058 496 ≈ 116 milliards.
+Total : 175 181 291 520 paramètres, soit environ 175 milliards. Le MLP en représente environ les deux tiers, l'attention environ un tiers.
+Combien de paramètres compte une seule matrice W_Q d'une seule tête ?
+
+=== T021 | explanation | layernorm
+U: c'est quoi la LayerNorm ?
+A: La LayerNorm normalise chaque vecteur de token sur ses C composantes : on soustrait la moyenne et on divise par l'écart-type, puis on applique un gain γ et un décalage β appris. Elle remet les composantes sur une échelle comparable.
+Le cours insiste : elle stabilise la circulation de l'information, mais elle ne mélange pas les tokens et n'ajoute pas de connaissance. Dans un bloc pré-norm, on l'applique avant l'attention et avant le MLP : x1 = x + Attention(LayerNorm(x)), puis x2 = x1 + MLP(LayerNorm(x1)).
+Au TP3, notre LayerNorm maison coïncidait avec nn.LayerNorm à 1e-6 près.
+Sur quel axe d'un tenseur (B, T, C) calcule-t-on la moyenne de la LayerNorm ?
+
+=== T022 | explanation | bloc_transformer
+U: Décris moi un bloc Transformer complet
+A: Un bloc pré-norm enchaîne deux sous-blocs résiduels :
+1. x1 = x + Attention(LayerNorm(x)) : chaque token récupère de l'information des tokens précédents ;
+2. x2 = x1 + MLP(LayerNorm(x1)) : chaque token est transformé séparément.
+On empile ces blocs (96 dans GPT-3, quelques-uns dans le TP4). Après le dernier, une LayerNorm finale, puis l'unembedding (lm_head) donne les logits.
+La forme (B, T, C) est conservée d'un bloc à l'autre, ce qui permet de les empiler et d'additionner les résiduels.
+Pourquoi le MLP doit-il revenir à la dimension C après la projection 4C ?
+
+=== T023 | explanation | cout_quadratique
+U: pourquoi on dit que l'attention coûte cher sur les longs contextes ?
+A: Parce que chaque Query est comparée à toutes les Keys : pour n tokens, la matrice des scores contient n × n cases. Doubler le contexte quadruple donc le nombre de scores.
+Ordres de grandeur du cours : 4 096² ≈ 16,8 millions de scores, 32 768² ≈ 1,07 milliard, 128 000² ≈ 16,4 milliards. Le masque causal en garde environ la moitié, n(n + 1)/2, mais la croissance reste en O(n²).
+Pour allonger le contexte, on calcule moins de paires (attention parcimonieuse, Linformer, attention linéaire) ou on calcule la même attention plus efficacement (FlashAttention).
+Combien de scores contient la matrice d'attention pour un contexte de 1 024 tokens ?
+
+=== T024 | explanation | entrainement_parallele
+U: Comment un Transformer peut apprendre sur toutes les positions en même temps ?
+A: Une séquence fournit plusieurs exercices d'un coup : pour « Le petit chaperon rouge », le modèle doit prédire « petit » après « Le », « chaperon » après « Le petit », « rouge » après « Le petit chaperon ».
+Grâce au masque causal, chaque position ne voit que sa gauche : on peut donc calculer toutes ces prédictions en un seul passage, en parallèle, sans que le modèle voie la réponse. La perte est la moyenne des −log p sur toutes les positions valides.
+C'est pour ça qu'au TP1 Transformers, x et y sont décalés d'une position : y[t] est la cible de x[:t + 1].
+Combien de prédictions produit un bloc de block_size = 8 ?
+
+=== T025 | explanation | loss_token
+U: comment on calcule la loss d'un LLM ?
+A: Pour chaque position, on regarde seulement la probabilité attribuée au token réellement présent, et on prend L = −log P(bonne réponse). Puis on fait la moyenne sur toutes les prédictions valides du batch : L = −(1/N) Σ log P(x_(t+1) | x_≤t).
+Valeurs du cours : P = 0,90 donne 0,11, P = 0,10 donne 2,30, P = 0,001 donne 6,91. Minimiser cette perte revient à rendre plus probable le token observé.
+Dans PyTorch, c'est F.cross_entropy(logits, cibles), qui applique la softmax et le −log en une fois. Pour un chatbot, on masque souvent les tokens du prompt avec −100 pour n'apprendre que les réponses.
+Pourquoi aplatit-on B × T avant d'appeler F.cross_entropy ?
+
+=== T026 | explanation | chinchilla
+U: c'est quoi la loi de Chinchilla ?
+A: C'est un résultat empirique publié en 2022 par Hoffmann et al. : pour entraîner un modèle de façon optimale à budget de calcul fixé, il faudrait environ 20 tokens d'entraînement par paramètre.
+Le cours en tire une conclusion sur GPT-3 : 175 milliards de paramètres auraient demandé environ 3 500 milliards de tokens, alors qu'il a été entraîné sur environ 300 milliards. GPT-3 était donc nettement sous-entraîné.
+L'idée générale : à budget égal, un modèle plus petit entraîné sur plus de données peut faire mieux qu'un modèle géant peu entraîné.
+D'après cette règle, combien de tokens faudrait-il pour un modèle de 500 millions de paramètres ?
+
+=== T027 | explanation | bigramme_tp
+U: rappelle moi le modèle bigramme du TP1 transformers
+A: C'est le plus petit modèle de langage possible : une table nn.Embedding(vocab_size, vocab_size). Chaque caractère lit directement sa ligne, qui contient un logit pour chacun des C caractères possibles : « après ce caractère, quels caractères sont plausibles ? ».
+L'entrée idx de forme (B, T) donne des logits (B, T, C). On aplatit en (B·T, C) pour la perte d'entropie croisée, puis on entraîne avec AdamW. La génération garde les logits de la dernière position, applique la softmax et tire avec torch.multinomial.
+Au TP, la perte passait d'environ 5,04 à 2,50, mais le modèle n'a aucune mémoire au-delà d'un caractère.
+Pourquoi la table est-elle de taille C × C ?
+
+=== T028 | explanation | attention_tp2
+U: Quelles étaient les quatre versions de l'attention du TP2 ?
+A: Le TP2 construit l'auto-attention par étapes :
+1. boucles : pour chaque position t, la moyenne des vecteurs de 0 à t ;
+2. produit matriciel : une matrice triangulaire normalisée wei, puis wei @ x, qui donne exactement la même moyenne causale ;
+3. masque + softmax : des zéros, −∞ au-dessus de la diagonale, puis softmax, ce qui redonne les mêmes poids ;
+4. self-attention : les poids viennent de q @ kᵀ mis à l'échelle par 1/√d_h, masqués, passés à la softmax, puis appliqués aux Values.
+On vérifie à chaque étape avec torch.allclose que les versions coïncident.
+Qu'est-ce qui change fondamentalement entre la version 3 et la version 4 ?
+
+=== T029 | explanation | formes_btc
+U: c'est quoi B, T et C ?
+A: Ce sont les trois dimensions qu'on suit dans tous les TP Transformers :
+- B : le nombre de séquences indépendantes dans le batch ;
+- T : la longueur de chaque séquence (le contexte, block_size) ;
+- C : la dimension des vecteurs (les canaux, n_embd), ou la taille du vocabulaire pour les logits.
+Une ligne de xb est une séquence, une colonne une position temporelle. Les embeddings ont la forme (B, T, C), les scores d'attention (B, T, T) et les logits (B, T, vocab_size).
+Quelle est la forme de q @ k.transpose(-2, -1) si q et k ont la forme (B, T, d_h) ?
+
+=== T030 | explanation | assistant_etapes
+U: Comment on passe d'un modèle de langage à un assistant comme ChatGPT ?
+A: Le cours décrit trois étapes :
+1. pré-entraînement : prédire le token suivant sur de très grands corpus, pour apprendre la langue et de nombreuses régularités ;
+2. instruction tuning : apprendre sur des exemples d'instructions et de réponses, pour répondre au bon format ;
+3. optimisation par préférences : favoriser les réponses jugées plus utiles et plus sûres, l'approche d'InstructGPT (Ouyang et al., 2022).
+Un LLM apprend donc d'abord à compléter du texte, puis à suivre des consignes, puis à privilégier certains comportements.
+À quelle étape rattacherais-tu une adaptation LoRA sur des dialogues de tutorat ?
+
+=== T031 | explanation | factorisation_wv
+U: pourquoi le cours dit que W_V est factorisée ?
+A: La transformation effective des Values ramène un vecteur de 12 288 dimensions vers 12 288 dimensions, ce qui demanderait une matrice carrée de 12 288² ≈ 151 millions de paramètres par tête.
+En pratique, on la factorise : W_V = W_O × W̃_V, avec W̃_V de 128 × 12 288 (descente vers l'espace de la tête) et W_O de 12 288 × 128 (retour vers l'embedding). Cela fait 2 × 12 288 × 128 = 3 145 728 paramètres, autant que W_Q et W_K réunies.
+C'est une matrice de rang au plus 128 : la même idée de faible rang que LoRA.
+Combien de fois moins de paramètres cette factorisation demande-t-elle ?
+
+=== T032 | quiz | softmax
+U: pose moi une question sur la softmax
+A: Question : quelles probabilités donne la softmax des logits (1, 1, 0) ?
+U: e = 2,72, donc 2,72 / (2,72+2,72+1) = 0,42 deux fois et 1/6,44 = 0,16
+A: Exact : la somme vaut 2,72 + 2,72 + 1 = 6,44, d'où environ 0,42, 0,42 et 0,16. Les deux premiers tokens, à égalité de logit, reçoivent la même probabilité, et la somme fait bien 1 aux arrondis près.
+Remarque : avec un argmax, il y aurait ici une égalité à départager, alors que l'échantillonnage tire l'un ou l'autre avec la même chance.
+Que deviennent ces probabilités si on ajoute 10 à chaque logit ?
+
+=== T033 | quiz | attention
+U: Teste moi sur Q, K et V
+A: Question : dans une tête d'attention, lequel des trois vecteurs (Query, Key, Value) porte l'information qui sera effectivement ajoutée au token courant ?
+U: la key
+A: Pas tout à fait : c'est la Value. La Key sert seulement à la comparaison : son produit scalaire avec la Query donne le score, donc le poids d'attention. L'information transmise est la somme des Values pondérées par ces poids.
+Une façon de retenir : Query = ce que je cherche, Key = l'étiquette de ce que j'ai, Value = le contenu que je donne.
+Question suivante : quelle est la somme des poids d'attention d'une même Query après la softmax ?
+
+=== T034 | quiz | gpt3_parametres
+U: quiz sur le comptage de paramètres
+A: Question : dans GPT-3, quelle partie contient le plus de paramètres : les embeddings (avec l'unembedding), l'attention ou le MLP ?
+U: l'attention parce que c'est le plus important
+A: Non, c'est le MLP : environ 116 milliards de paramètres, contre environ 58 milliards pour l'attention et 1,2 milliard pour l'embedding et l'unembedding réunis. Le MLP pèse donc à peu près les deux tiers des 175 milliards.
+L'attention est essentielle pour le contexte, mais ses matrices sont plus petites : chaque tête projette vers 128 dimensions, alors que le MLP monte à 49 152 neurones par couche.
+Peux-tu retrouver le nombre de paramètres de l'up-projection sur une seule couche ?
+
+=== T035 | quiz | layernorm
+U: Une question sur la LayerNorm ?
+A: Question : vrai ou faux, la LayerNorm mélange l'information des différents tokens de la séquence ?
+U: faux elle normalise chaque token séparément
+A: Exact. La LayerNorm calcule la moyenne et l'écart-type sur les C composantes d'un même vecteur de token, donc sur le dernier axe d'un tenseur (B, T, C). Chaque token est traité indépendamment des autres.
+Le cours le dit : elle stabilise la circulation de l'information, mais ne mélange pas les tokens et n'ajoute pas de connaissance. Seule l'attention fait circuler l'information entre positions.
+Après une LayerNorm sans γ ni β, quelles sont la moyenne et la variance de chaque vecteur ?
+
+=== T036 | explanation | position_dans_tp4
+U: Comment le modèle du TP4 gère les positions ?
+A: Avec une deuxième table d'embedding, nn.Embedding(block_size, n_embd), qui associe un vecteur appris à chaque position de 0 à block_size − 1. Pour une entrée (B, T), on additionne l'embedding des tokens, de forme (B, T, C), et celui des positions torch.arange(T), de forme (T, C), diffusé sur le batch.
+C'est la formule du cours : E(0) = E_token + P_position. Conséquence : le modèle ne peut pas traiter plus de block_size tokens, et pendant la génération on ne lui passe que les block_size derniers tokens.
+Que se passerait-il si on oubliait de recadrer le contexte à block_size pendant la génération ?
+
+=== T037 | explanation | logits_shape_hf
+U: Quand j'appelle le modèle Hugging Face, j'obtiens quoi ?
+A: model(input_ids) renvoie un objet dont l'attribut logits a la forme (batch, longueur de séquence, taille du vocabulaire). On a donc une distribution possible pour le token suivant à chaque position, pas seulement à la fin, car le modèle calcule toutes les positions en parallèle.
+Pour prédire le prochain token, on prend logits[0, -1, :], puis torch.softmax pour obtenir les probabilités et torch.topk pour lire les candidats.
+Si on passe aussi labels=input_ids, le modèle calcule directement la perte d'entropie croisée, en décalant les cibles d'une position.
+Pourquoi la position −1 est-elle la seule utile pour générer la suite ?
+
+=== T038 | explanation | attention_vs_mlp
+U: Différence entre attention et MLP ?
+A: Les deux se relaient dans chaque couche, mais n'ont pas le même rôle :
+- l'attention fait circuler l'information entre les tokens : elle compare chaque Query aux Keys des tokens précédents et récupère leurs Values ;
+- le MLP transforme chaque token séparément, sans interaction latérale, avec les mêmes matrices pour toutes les positions : il mobilise des associations apprises.
+Le cours le résume : l'attention construit le contexte, le MLP apprend des faits. Dans les deux cas, la sortie est ajoutée au vecteur par une connexion résiduelle.
+Pour compléter « Michael Jackson est un… » sans autre contexte, quelle brique joue le rôle principal ?
+
+=== T039 | explanation | sens_contexte
+U: Comment un Transformer comprend que « couvent » a deux sens dans la même phrase ?
+A: Au départ, les deux occurrences de « couvent » ont le même embedding de token ; seules leurs positions diffèrent. C'est l'attention qui les différencie : dans « Les poules du couvent couvent », le premier « couvent » reçoit l'information de « du », qui pousse vers le lieu, et le second celle de « poules » et de sa position après un nom, qui pousse vers le verbe.
+Couche après couche, chaque occurrence accumule ces corrections et aboutit à une représentation contextualisée différente. Le cours le présente comme l'objectif même de l'entraînement : apprendre à lever les ambiguïtés.
+Pourquoi un embedding statique de type Word2Vec ne pourrait-il pas faire cette distinction ?
+
+=== T040 | explanation | apprentissage_matrices
+U: Est-ce que l'attention et le MLP sont entraînés séparément ?
+A: Non, toutes les matrices sont entraînées ensemble : embeddings, W_Q, W_K, W_V, W_O, W_up, W_down et unembedding. La prédiction finale dépend de toute la chaîne de calcul, donc la perte aussi.
+La rétropropagation calcule en un seul passage arrière la contribution de chaque paramètre à l'erreur (∂L/∂W_Q, ∂L/∂W_up, ∂L/∂W_U…), grâce à la règle de la chaîne, puis la descente de gradient met tout à jour en même temps.
+Avec LoRA, c'est différent : seules les petites matrices des adaptateurs sont mises à jour.
+Dans quel ordre la rétropropagation parcourt-elle les couches ?
+
+=== T041 | calculation | nombre_scores
+U: combien de scores d'attention pour 4096 tokens ?
+A: La matrice des scores contient n × n cases, soit 4 096² = 16 777 216, environ 16,8 millions, par tête et par couche.
+Avec le masque causal, seule la partie triangulaire est utile : n(n + 1)/2 = 4 096 × 4 097 / 2 = 8 390 656, soit environ la moitié. La croissance reste quadratique : en doublant à 8 192 tokens, on passe à environ 67 millions de scores.
+Dans GPT-3, ce calcul se répète pour 96 têtes dans chacune des 96 couches.
+Combien de fois plus de scores y a-t-il en passant de 4 096 à 32 768 tokens ?
+
+=== T042 | explanation | decodage_lien_logits
+U: Quel est le lien entre les logits et la température ?
+A: La température agit directement sur les logits, juste avant la softmax : on calcule softmax(z / T). C'est donc le dernier réglage entre l'unembedding et le choix du token.
+Diviser par T < 1 agrandit les écarts entre logits : la softmax se concentre sur les plus grands. Diviser par T > 1 les réduit : la distribution s'aplatit. L'ordre des logits ne change jamais.
+Top-k et top-p interviennent ensuite, sur les probabilités, pour couper la queue de la distribution avant le tirage.
+Dans quel ordre appliquerais-tu température, top-p et tirage ?
+
+=== T043 | explanation | taille_vocabulaire
+U: Pourquoi la taille du vocabulaire compte autant dans un LLM ?
+A: Parce qu'elle fixe la taille de deux grosses matrices : l'embedding et l'unembedding, chacune de taille vocabulaire × dimension. Dans GPT-3, 50 257 × 12 288 ≈ 617 millions de paramètres chacune. Pour un petit modèle, ce poids est relativement énorme : dans Qwen2.5-0.5B, avec 151 936 tokens et 896 dimensions, l'embedding représente environ 136 millions de paramètres, plus du quart du modèle.
+Un grand vocabulaire raccourcit les séquences et couvre mieux les langues variées, mais coûte des paramètres et un softmax plus large.
+Pourquoi beaucoup de modèles partagent-ils les poids de l'embedding et de l'unembedding ?
+
+=== T044 | explanation | tp4_modele
+U: résume moi le modèle complet du TP4
+A: Le TP4 assemble toutes les briques :
+- un embedding de tokens et un embedding de positions, additionnés ;
+- plusieurs blocs pré-norm : x + MultiHeadAttention(LayerNorm(x)), puis x + MLP(LayerNorm(x)) avec un MLP C → 4C → C ;
+- une LayerNorm finale et une couche lm_head qui donne les logits (B, T, vocab_size).
+On l'entraîne sur Tiny Shakespeare avec AdamW en suivant les pertes d'entraînement et de validation, puis on génère du texte caractère par caractère. Avec environ 0,21 million de paramètres, la perte de validation passait d'environ 4,36 à 1,88.
+Quel est le rôle de la LayerNorm finale avant lm_head ?
+
+=== T045 | quiz | prochain_token
+U: interroge moi sur la génération
+A: Question : un modèle donne P(parc) = 0,62, P(jardin) = 0,25, P(cinéma) = 0,09 et P(musée) = 0,04. Quel token produit un décodage greedy, et quelle est la probabilité d'obtenir « jardin » avec un échantillonnage simple à température 1 ?
+U: greedy donne parc et jardin a 25% de chance
+A: Exact sur les deux points. Le greedy prend toujours l'argmax, donc « parc ». L'échantillonnage tire selon la distribution, donc « jardin » sort une fois sur quatre en moyenne.
+C'est l'exemple du cours : l'échantillonnage évite des réponses trop répétitives et produit un texte plus varié, au prix d'un risque de tirer un token peu pertinent.
+Avec un top-k = 2, quelle serait la probabilité de « jardin » ?
+
+=== T046 | explanation | parametres_vs_contexte
+U: Le modèle stocke ses connaissances où ?
+A: Dans ses paramètres, et non dans le contexte. Le cours prend l'exemple de « Michael Jackson est un » : sans aucune définition fournie, le modèle favorise « chanteur ». Cette connaissance est encodée dans les poids, et le cours l'attribue surtout au MLP : un neurone détecte « s'appelle Michael Jackson » et ajoute la direction « chanteur » au vecteur.
+Le contexte, lui, apporte une information temporaire, valable seulement pour la requête en cours ; c'est ce qu'exploite le RAG.
+Le cours précise que ces neurones « détecteurs » sont une interprétation pédagogique : une colonne réelle peut mélanger plusieurs propriétés.
+Si on veut qu'un modèle connaisse un fait publié hier, vaut-il mieux modifier ses paramètres ou son contexte ?
+
+=== T047 | explanation | gelu
+U: pourquoi GELU au lieu de ReLU ?
+A: GELU est une activation plus lisse que ReLU : au lieu de couper net à zéro tous les scores négatifs, elle laisse passer une petite partie des valeurs légèrement négatives et a une dérivée continue. Cela facilite un peu l'optimisation des grands réseaux.
+GPT-3 utilise une activation de type GELU dans son MLP (Hendrycks et Gimpel, 2016). Le cours garde ReLU pour l'intuition, car la règle max(0, z) rend visible le fait qu'un neurone est actif ou éteint. Au TP3, on a comparé les deux variantes.
+Que vaut ReLU(−0,1), et pourquoi GELU donne-t-elle une valeur légèrement différente ?

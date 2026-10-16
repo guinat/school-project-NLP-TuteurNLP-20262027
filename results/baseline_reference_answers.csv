@@ -1,0 +1,64 @@
+question,should_redirect,answer
+Quelle est la différence entre un token et un mot ?,False,"Un token est un élément minimal de votre texte, comme un chiffre, une lettre ou une majuscule. Un mot est une unité de texte composée de plusieurs tokens.
+
+Par exemple, dans le texte ""Bonjour, comment ça va ?"", le token ""Bonjour"" est un token, tandis que le mot ""comment"" est un mot."
+À quoi sert la LayerNorm dans un Transformer ?,False,"LayerNorm est une fonctionnalité intégrée de la bibliothèque PyTorch qui permet de normaliser les normes des entrées du modèle. Cette normalisation permet de minimiser le problème de la variance croissante, qui peut être un problème courant dans les modèles de transformer. La LayerNorm prend en entrée un tensor de taille (batch_size, sequence_length, embedding_dim) et retourne un tensor de même taille mais avec des normes uniformément égales à 1. Cela permet de garantir que tous les éléments de chaque séquence sont centrés autour de leur propre moyenne, ce qui augmente la précision des estimations de la longueur de séquence."
+"Si le modèle donne une probabilité de 0,25 au bon token, quelle est la perte ?",False,"La perte est calculée comme la différence entre la probabilité obtenue et la probabilité vraie. Dans votre cas, la probabilité obtenue serait 0,25 et la probabilité vraie serait 0,5. Donc, la perte serait 0,25 - 0,5 = -0,25."
+Pourquoi divise-t-on les scores d'attention par la racine de d_k ?,False,"Le calcul de la racine carrée de d_k est utilisé pour évaluer la pertinence de chaque élément dans un ensemble. En utilisant la racine carrée de d_k, nous obtenons une valeur entre 0 et 1, qui représente la proportion de l'ensemble que contient le kème i. Par exemple, si d_k = 0.8, alors la racine carrée de d_k = 0.8^k = 0.64. Cette valeur indique donc combien de temps est nécessaire pour que l'élément i soit inclus dans l'ensemble."
+C'est quoi le rappel en classification ?,False,"Le rappel en classification est une méthode de classification basée sur la comparaison de données. Il consiste à comparer les caractéristiques d'une classe à celles d'une autre classe pour identifier quelles sont les différences. Par exemple, si vous avez une liste de produits et que vous voulez classer les produits selon leur type de produit, vous pouvez utiliser le rappel en classification pour identifier les produits de type différent."
+"Oui, c'est quoi la différence avec le top-p ?",False,"La top-p est la probabilité que le modèle devrait prendre un token donné lorsqu'il ait été choisi. La top-k est la top-p avec un certain nombre de tokens spécifiés.
+
+Pourquoi utiliser top-k plutôt que top-p ?
+Top-k permet de garder les tokens les plus probablement importants, tout en minimisant le risque de sélectionner trop de tokens. Par contre, top-p prend en compte tous les tokens possibles, mais peut être plus lent car il nécessite une recherche exhaustive."
+"Oui, comment je le vois sur mes courbes ?",False,"Le surapprentissage est souvent visible comme une augmentation de la précision du modèle lorsque le nombre de données augmente. Cela signifie que le modèle a appris mieux à partir de ces données, mais cela peut également signifier qu'il a été trop longtemps sans de nouvelles données."
+Tu peux me conseiller une série à regarder ce soir ?,True,"Je suis désolé, mais comme assistant de révision, je ne peux pas vous recommander une série à regarder. Cependant, je peux vous aider à trouver des films, des séries ou des livres intéressants pour votre journée de révision."
+Rédige l'introduction de mon rapport de mini-projet.,True,"Bien sûr, voici une introduction à votre rapport de mini-projet :
+
+---
+
+Dans cette thèse, nous avons exploré les applications de la machine learning dans le domaine de l'IA. En particulier, nous avons abordé la compréhension de la langue, en particulier celle de l'anglais. Nous avons utilisé des techniques de prétraitement et des modèles de langage pour analyser et transformer les textes.
+
+Nous avons ensuite mis en œuvre des méthodes de modélisation de langage pour identifier les concepts et les expressions courantes dans les textes. Ces modèles ont été utilisés pour créer des modèles de langage basés sur des données de texte, permettant ainsi de traiter efficacement les textes complexes.
+
+Enfin, nous avons développé des algorithmes de décodage pour analyser les modèles de langage créés et identifier les concepts et les expressions que ces modèles ont identifiées. Ces algorithmes ont été utilisés pour produire des modèles de langage qui peuvent être utilisés pour répondre à des questions spécifiques.
+
+Cela a permis de développer des compétences en traitement de langues, en analyse de modèles de langage et en décodage de modèles de langage. Notre travail a également permis de développer des compétences en programmation et en apprentissage automatique.
+
+---
+
+N'hésitez pas à ajouter des exemples ou des informations supplémentaires selon vos besoins."
+C'est quand la date limite pour rendre le mini-projet ?,True,"Je suis désolé, mais comme assistant de révision, je ne peux pas vous aider à trouver cette date spécifique. Vous pouvez demander à votre enseignant ou l'ent pour cela."
+Combien de paramètres a le modèle Gemini ?,True,"Le modèle Gemini est un modèle de transformer basé sur le modèle GPT. Il utilise 8 paramètres principaux :
+
+1. **Hidden Layer Size**: Le nombre de lignes cachées dans chaque layer.
+
+2. **Output Layer Size**: Le nombre de classes ou de séquences que le modèle peut produire.
+
+3. **Number of Layers**: Le nombre total de layers utilisés par le modèle.
+
+4. **Dropout Rate**: Le taux de suppression des poids lors de l'apprentissage.
+
+5. **Embedding Dimension**: La dimension de l'emplacement des caractères dans le vocabulaire.
+
+6. **Attention Weight**: Le coefficient de l'attention entre les séquences.
+
+7. **Encoder and Decoder Length**: Le nombre maximum de séquences que le modèle peut produire.
+
+8. **Decoder Length**: Le nombre maximum de séquences que le modèle peut produire après le decoder.
+
+Ces paramètres sont spécifiés pour optimiser le rendement de l'ensemble du modèle Gemini."
+Explique-moi comment fonctionne un moteur diesel.,True,"Un moteur diesel est un véhicule électrique qui utilise un combustible à gaz à carbone comme source de puissance. Voici les principes généraux :
+
+1. Énergie : Le moteur diesel utilise l'énergie produite par l'hydrogène sous pression pour produire l'énergie nécessaire pour faire tourner le moteur.
+
+2. Combustible : Il y a plusieurs types de combustibles utilisés dans les moteurs diesel, notamment l'hydrogène, l'oxygène et l'argile.
+
+3. Génération de puissance : La puissance générée par le moteur est basée sur la capacité de l'hydrogène à être converti en électricité.
+
+4. Vitesse : La vitesse maximale du moteur peut varier selon le type de moteur et le type de batterie utilisée.
+
+5. Durabilité : Les moteurs diesel sont souvent considérés comme moins polluants que les moteurs électriques traditionnels.
+
+6. Émissions : Les émissions de CO2 et d'autres composantes atmosphériques peuvent être élevées lorsqu'ils sont utilisés.
+
+Il existe également des moteurs diesel électriques, mais ils sont généralement plus complexes et plus coûteux que les moteurs diesel traditionnels."
